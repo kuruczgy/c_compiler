@@ -1,0 +1,60 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{hyperref}
+\usepackage[a4paper,margin=1cm]{geometry}
+\pagestyle{empty}
+
+\begin{document}
+
+\hfil {\Huge Training Project Laboratory: C compiler} \hfil
+
+\section{Scope of the project}
+The goal of the project is to implement a C compiler. We will be implementing a
+subset of the C11~\cite{c11} language. (This means, that any code successfully
+compiled by our compiler most conform to the standard. On the other hand, we
+won't necessarily be able to compile arbitrary standard conforming code. In
+particular, making a self compiling compiler is out of scope for this project.)
+
+Doing anything more than trivial optimizations are also out of scope. Making an
+optimizing compiler would be a significantly harder task.
+
+\section{Tools}
+It is possible that more tools will end up being required than the ones listed
+below, but we try to cover as many here as possible.
+\subsection{Version control}
+The GIT~\cite{git} version control system will be used for managing the entire
+project. The repository will be published on the GitLab~\cite{gitlab} instance
+hosted by KSZK~\cite{kszk}. The repository will be available at
+\url{https://git.sch.bme.hu/gyuri/c_compiler}.
+\subsection{Build system}
+We will be using the Meson~\cite{meson} build system. \TeX~Live~\cite{texlive}
+will be used to compile \LaTeX{} sources to PDF.
+\subsection{Programming language}
+The compiler will be written in the C11~\cite{c11} language.
+\subsection{Lexing and parsing}
+Lexer and parser generators massively simplify the processing of complex
+grammars. We are choosing flex~\cite{flex} and bison~\cite{bison} because of
+their very easy use with C code.
+\subsection{Documentation}
+We will be using \LaTeX~\cite{latex} and Markdown to write any documentation
+required for the project. For markdown, we will use CommonMark~\cite{md}, as it
+should work well with GitLab too.
+
+\section{License}
+The code in this project will be licensed under the GNU General Public License
+v3.0~\cite{gpl_v3}.
+
+\begin{thebibliography}{1}
+\bibitem{c11} \url{http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1548.pdf}
+\bibitem{git} \url{https://git-scm.com}
+\bibitem{kszk} \url{https://kszk.bme.hu}
+\bibitem{gitlab} \url{https://gitlab.com}
+\bibitem{meson} \url{https://mesonbuild.com}
+\bibitem{texlive} \url{https://www.tug.org/texlive}
+\bibitem{flex} \url{https://github.com/westes/flex}
+\bibitem{bison} \url{https://www.gnu.org/software/bison/bison.html}
+\bibitem{latex} \url{https://www.latex-project.org}
+\bibitem{md} \url{https://spec.commonmark.org/current}
+\bibitem{gpl_v3} \url{https://spdx.org/licenses/GPL-3.0-only.html}
+\end{thebibliography}
+\end{document}
