@@ -2,6 +2,7 @@
 %{
 #include <stdio.h>
 #include <c_compiler/ast.h>
+#include <c_compiler/cg.h>
 #include <c.tab.h>
 
 // typedef struct ast_node *YYSTYPE;
@@ -33,6 +34,8 @@ int main(int argc, char *argv[])
 
 	if (strcmp(argv[1], "ast") == 0) {
 		ast_fprint(stdout, n, 0);
+	} else if (strcmp(argv[1], "asm") == 0) {
+		cg_gen(n);
 	} else {
 		return EXIT_FAILURE;
 	}
