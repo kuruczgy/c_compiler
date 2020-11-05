@@ -37,14 +37,38 @@ static const char *bin_op[] = {
 	[AST_BIN_ASSIGN] = "=",
 	[AST_BIN_COMMA] = ",",
 };
-static const char *type_kind[] = {
-	[AST_TYPE_INT] = "int",
-	[AST_TYPE_CHAR] = "char",
+static const char *storage_class_specifier[] = {
+	[AST_STORAGE_CLASS_SPECIFIER_TYPEDEF] = "typedef",
+	[AST_STORAGE_CLASS_SPECIFIER_EXTERN] = "extern",
+	[AST_STORAGE_CLASS_SPECIFIER_STATIC] = "static",
+	[AST_STORAGE_CLASS_SPECIFIER_THREAD_LOCAL] = "_Thread_local",
+	[AST_STORAGE_CLASS_SPECIFIER_AUTO] = "auto",
+	[AST_STORAGE_CLASS_SPECIFIER_REGISTER] = "register",
+};
+static const char *builtin_type[] = {
+	[AST_BUILTIN_TYPE_VOID] = "void",
+	[AST_BUILTIN_TYPE_CHAR] = "char",
+	[AST_BUILTIN_TYPE_SHORT] = "short",
+	[AST_BUILTIN_TYPE_INT] = "int",
+	[AST_BUILTIN_TYPE_LONG] = "long",
+	[AST_BUILTIN_TYPE_FLOAT] = "float",
+	[AST_BUILTIN_TYPE_DOUBLE] = "double",
+	[AST_BUILTIN_TYPE_SIGNED] = "signed",
+	[AST_BUILTIN_TYPE_UNSIGNED] = "unsigned",
+	[AST_BUILTIN_TYPE_BOOL] = "_Bool",
+	[AST_BUILTIN_TYPE_COMPLEX] = "_Complex",
+};
+static const char *type_qualifier[] = {
+	[AST_TYPE_QUALIFIER_CONST] = "const",
+	[AST_TYPE_QUALIFIER_RESTRICT] = "restrict",
+	[AST_TYPE_QUALIFIER_VOLATILE] = "volatile",
+	[AST_TYPE_QUALIFIER_ATOMIC] = "_Atomic",
+};
+static const char *function_specifier[] = {
+	[AST_FUNCTION_SPECIFIER_INLINE] = "inline",
+	[AST_FUNCTION_SPECIFIER_NORETURN] = "_Noreturn",
 };
 
-static void decl_spec(FILE *f, enum ast_type_kind k) {
-	fprintf(f, "%s", type_kind[k]);
-}
 static void indent(FILE *f, int ind) {
 	for (int i = 0; i < ind; ++i) fprintf(f, "\t");
 }
@@ -120,7 +144,7 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		fprintf(f, ")");
 		break;
 	case AST_DECLARATION:
-		decl_spec(f, n->declaration.declaration_specifiers);
+		ast_fprint(f, n->declaration.declaration_specifiers, ind);
 		v = &n->declaration.init_declarator_list;
 		for (int i = 0; i < v->len; ++i) {
 			fprintf(f, " ");
@@ -143,8 +167,53 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		}
 		ast_fprint(f, n->declarator.direct_declarator, ind);
 		break;
+	case AST_DECLARATION_SPECIFIERS:
+		v = &n->declaration_specifiers.storage_class_specifiers;
+		for (int i = 0; i < v->len; ++i) {
+			const enum ast_storage_class_specifier *ei = vec_get_c(v, i);
+			fprintf(f, "%s", storage_class_specifier[*ei]);
+			fprintf(f, " ");
+		}
+		v = &n->declaration_specifiers.type_qualifiers;
+		for (int i = 0; i < v->len; ++i) {
+			const enum ast_type_qualifier *ei = vec_get_c(v, i);
+			fprintf(f, "%s", type_qualifier[*ei]);
+			fprintf(f, " ");
+		}
+		v = &n->declaration_specifiers.function_specifiers;
+		for (int i = 0; i < v->len; ++i) {
+			const enum ast_function_specifier *ei = vec_get_c(v, i);
+			fprintf(f, "%s", function_specifier[*ei]);
+			fprintf(f, " ");
+		}
+		v = &n->declaration_specifiers.alignment_specifiers;
+		for (int i = 0; i < v->len; ++i) {
+			const struct ast_node * const *ni = vec_get_c(v, i);
+			ast_fprint(f, *ni, ind);
+			fprintf(f, " ");
+		}
+		v = &n->declaration_specifiers.type_specifiers;
+		for (int i = 0; i < v->len; ++i) {
+			const struct ast_node * const *ni = vec_get_c(v, i);
+			ast_fprint(f, *ni, ind);
+			if (i < v->len - 1) fprintf(f, " ");
+		}
+		break;
+	case AST_BUILTIN_TYPE:
+		fprintf(f, "%s", builtin_type[n->builtin_type]);
+		break;
+	case AST_ALIGNMENT_SPECIFIER:
+		fprintf(f, "_Alignas(");
+		ast_fprint(f, n->alignment_specifier.expr, ind);
+		fprintf(f, ")");
+		break;
 	case AST_ARRAY_DECLARATOR:
-		fprintf(f, "<array_declarator>");
+		ast_fprint(f, n->array_declarator.direct_declarator, ind);
+		fprintf(f, "[");
+		if (n->array_declarator.size) {
+			ast_fprint(f, n->array_declarator.size, ind);
+		}
+		fprintf(f, "]");
 		break;
 	case AST_FUNCTION_DECLARATOR:
 		ast_fprint(f, n->function_declarator.direct_declarator, ind);
@@ -158,7 +227,7 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		fprintf(f, ")");
 		break;
 	case AST_PARAMETER_DECLARATION:
-		decl_spec(f, n->parameter_declaration.declaration_specifiers);
+		ast_fprint(f, n->parameter_declaration.declaration_specifiers, ind);
 		if (n->parameter_declaration.declarator) {
 			fprintf(f, " ");
 			ast_fprint(f, n->parameter_declaration.declarator, ind);
@@ -171,7 +240,7 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		}
 		break;
 	case AST_FUNCTION_DEFINITION:
-		decl_spec(f, n->function_definition.declaration_specifiers);
+		ast_fprint(f, n->function_definition.declaration_specifiers, ind);
 		fprintf(f, " ");
 		ast_fprint(f, n->function_definition.declarator, ind);
 		fprintf(f, " ");
@@ -298,7 +367,7 @@ struct ast_node *ast_stmt_if(struct ast_node *a, struct ast_node *b) {
 	};
 	return n;
 }
-struct ast_node *ast_declaration(enum ast_type_kind declaration_specifiers, struct vec init_declarator_list) {
+struct ast_node *ast_declaration(struct ast_node *declaration_specifiers, struct vec init_declarator_list) {
 	struct ast_node *n = malloc(sizeof(struct ast_node));
 	*n = (struct ast_node){
 		.kind = AST_DECLARATION,
@@ -353,7 +422,25 @@ struct ast_node *ast_function_declarator(struct ast_node *direct_declarator, str
 	};
 	return n;
 }
-struct ast_node *ast_parameter_declaration(struct ast_node *declarator, enum ast_type_kind declaration_specifiers) {
+struct ast_node *ast_declaration_specifiers() {
+	return ast_alloc((struct ast_node){
+		.kind = AST_DECLARATION_SPECIFIERS,
+		.declaration_specifiers = {
+			.storage_class_specifiers = vec_new_empty(sizeof(enum ast_storage_class_specifier)),
+			.type_specifiers = vec_new_empty(sizeof(struct ast_node *)),
+			.type_qualifiers = vec_new_empty(sizeof(enum ast_type_qualifier)),
+			.function_specifiers = vec_new_empty(sizeof(enum ast_function_specifier)),
+			.alignment_specifiers = vec_new_empty(sizeof(struct ast_node *)),
+		}
+	});
+}
+struct ast_node *ast_builtin_type(enum ast_builtin_type builtin_type) {
+	return ast_alloc((struct ast_node){
+		.kind = AST_BUILTIN_TYPE,
+		.builtin_type = builtin_type
+	});
+}
+struct ast_node *ast_parameter_declaration(struct ast_node *declarator, struct ast_node *declaration_specifiers) {
 	struct ast_node *n = malloc(sizeof(struct ast_node));
 	*n = (struct ast_node){
 		.kind = AST_PARAMETER_DECLARATION,
@@ -373,7 +460,7 @@ struct ast_node *ast_translation_unit(struct ast_node *item) {
 	vec_append(&n->translation_unit, &item);
 	return n;
 }
-struct ast_node *ast_function_definition(enum ast_type_kind declaration_specifiers, struct ast_node *declarator, struct ast_node *compound_statement) {
+struct ast_node *ast_function_definition(struct ast_node *declaration_specifiers, struct ast_node *declarator, struct ast_node *compound_statement) {
 	struct ast_node *n = malloc(sizeof(struct ast_node));
 	*n = (struct ast_node){
 		.kind = AST_FUNCTION_DEFINITION,
@@ -389,4 +476,9 @@ struct vec ast_list(struct ast_node *item) {
 	struct vec list = vec_new_empty(sizeof(struct ast_node *));
 	vec_append(&list, &item);
 	return list;
+}
+struct ast_node *ast_alloc(struct ast_node node) {
+	struct ast_node *n = malloc(sizeof(struct ast_node));
+	*n = node;
+	return n;
 }

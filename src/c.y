@@ -49,10 +49,12 @@ int main(int argc, char *argv[])
 	enum ast_unary_kind u;
 	enum ast_bin_kind b;
 	struct vec argument_expr_list; /* struct vec<ast_node *> */
-	enum ast_type_kind type_kind;
-	struct ast_type type;
 	int integer;
 	struct vec list; /* struct vec<ast_node *> */
+	enum ast_storage_class_specifier storage_class_specifier;
+	enum ast_builtin_type builtin_type;
+	enum ast_type_qualifier type_qualifier;
+	enum ast_function_specifier function_specifier;
 }
 
 %token ALIGNOF AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
@@ -70,20 +72,27 @@ int main(int argc, char *argv[])
 %token COMMA
 
 %type <n> identifier string_literal
-%type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression
-%type <n> declaration storage_class_specifier struct_or_union_specifier struct_or_union struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list struct_declarator enum_specifier enumerator_list enumerator atomic_type_specifier type_qualifier function_specifier alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator typedef_name initializer_list designation designator_list designator static_assertion_declaration
+%type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression constant_expression
+%type <n> declaration struct_or_union_specifier struct_or_union struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list struct_declarator enum_specifier enumerator_list enumerator atomic_type_specifier alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator typedef_name initializer_list designation designator_list designator static_assertion_declaration
 %type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement
 %type <n> translation_unit external_declaration function_definition
 
 %type <u> unary_operator
 %type <b> assigment_operator
 %type <argument_expr_list> argument_expression_list
-%type <type_kind> type_specifier declaration_specifiers
+%type <n> type_specifier
 %type <n> direct_declarator declarator
 %type <integer> pointer
 
 %type <n> init_declarator initializer parameter_declaration
 %type <list> init_declarator_list parameter_type_list parameter_list
+
+%type <storage_class_specifier> storage_class_specifier
+%type <builtin_type> builtin_type
+%type <type_qualifier> type_qualifier
+%type <function_specifier> function_specifier
+
+%type <n> declaration_specifiers
 
 %start start
 
@@ -212,16 +221,16 @@ declaration : declaration_specifiers SEMI
 	    | static_assertion_declaration
 	    ;
 
-declaration_specifiers : storage_class_specifier
-		       | storage_class_specifier declaration_specifiers
-		       | type_specifier { $$ = $1; }
-		       | type_specifier declaration_specifiers
-		       | type_qualifier
-		       | type_qualifier declaration_specifiers
-		       | function_specifier
-		       | function_specifier declaration_specifiers
-		       | alignment_specifier
-		       | alignment_specifier declaration_specifiers
+declaration_specifiers : storage_class_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.storage_class_specifiers, &($1)); }
+		       | storage_class_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.storage_class_specifiers, &($1)); $$ = $2; }
+		       | type_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.type_specifiers, &($1)); }
+		       | type_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.type_specifiers, &($1)); $$ = $2; }
+		       | type_qualifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.type_qualifiers, &($1)); }
+		       | type_qualifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.type_qualifiers, &($1)); $$ = $2; }
+		       | function_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.function_specifiers, &($1)); }
+		       | function_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.function_specifiers, &($1)); $$ = $2; }
+		       | alignment_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.alignment_specifiers, &($1)); }
+		       | alignment_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.alignment_specifiers, &($1)); $$ = $2; }
 		       ;
 
 init_declarator_list : init_declarator { $$ = ast_list($1); }
@@ -232,23 +241,30 @@ init_declarator : declarator { $$ = ast_init_declarator($1, NULL); }
 		| declarator EQ initializer { $$ = ast_init_declarator($1, $3); }
 		;
 
-storage_class_specifier : TYPEDEF | EXTERN | STATIC | U_THREAD_LOCAL | AUTO | REGISTER
+storage_class_specifier : TYPEDEF { $$ = AST_STORAGE_CLASS_SPECIFIER_TYPEDEF; }
+			| EXTERN { $$ = AST_STORAGE_CLASS_SPECIFIER_EXTERN; }
+			| STATIC { $$ = AST_STORAGE_CLASS_SPECIFIER_STATIC; }
+			| U_THREAD_LOCAL { $$ = AST_STORAGE_CLASS_SPECIFIER_THREAD_LOCAL; }
+			| AUTO { $$ = AST_STORAGE_CLASS_SPECIFIER_AUTO; }
+			| REGISTER { $$ = AST_STORAGE_CLASS_SPECIFIER_REGISTER; }
 			;
 
-type_specifier : VOID
-	       | CHAR { $$ = AST_TYPE_CHAR; }
-	       | SHORT
-	       | INT { $$ = AST_TYPE_INT; }
-	       | LONG
-	       | FLOAT
-	       | DOUBLE
-	       | SIGNED
-	       | UNSIGNED
-	       | U_BOOL
-	       | U_COMPLEX
-	       | atomic_type_specifier
-	       | struct_or_union_specifier
-	       | enum_specifier
+builtin_type : VOID { $$ = AST_BUILTIN_TYPE_VOID; }
+	     | CHAR { $$ = AST_BUILTIN_TYPE_CHAR; }
+	     | SHORT { $$ = AST_BUILTIN_TYPE_SHORT; }
+	     | INT { $$ = AST_BUILTIN_TYPE_INT; }
+	     | LONG { $$ = AST_BUILTIN_TYPE_LONG; }
+	     | FLOAT { $$ = AST_BUILTIN_TYPE_FLOAT; }
+	     | DOUBLE { $$ = AST_BUILTIN_TYPE_DOUBLE; }
+	     | SIGNED { $$ = AST_BUILTIN_TYPE_SIGNED; }
+	     | UNSIGNED { $$ = AST_BUILTIN_TYPE_UNSIGNED; }
+	     | U_BOOL { $$ = AST_BUILTIN_TYPE_BOOL; }
+	     | U_COMPLEX { $$ = AST_BUILTIN_TYPE_COMPLEX; }
+	     ;
+type_specifier : builtin_type { $$ = ast_builtin_type($1); }
+	       // | atomic_type_specifier
+	       // | struct_or_union_specifier
+	       // | enum_specifier
 	       // | typedef_name
 	       ;
 
@@ -301,15 +317,19 @@ enumerator : enumeration_constant
 atomic_type_specifier : U_ATOMIC LROUND type_name RROUND
 		      ;
 
-type_qualifier : CONST | RESTRICT | VOLATILE | U_ATOMIC
+type_qualifier : CONST { $$ = AST_TYPE_QUALIFIER_CONST; }
+	       | RESTRICT { $$ = AST_TYPE_QUALIFIER_RESTRICT; }
+	       | VOLATILE { $$ = AST_TYPE_QUALIFIER_VOLATILE; }
+	       | U_ATOMIC { $$ = AST_TYPE_QUALIFIER_ATOMIC; }
 	       ;
 
-function_specifier : INLINE | U_NORETURN
+function_specifier : INLINE { $$ = AST_FUNCTION_SPECIFIER_INLINE; }
+		   | U_NORETURN { $$ = AST_FUNCTION_SPECIFIER_NORETURN; }
 		   ;
 
-alignment_specifier : U_ALIGNAS LROUND type_name RROUND
-		   | U_ALIGNAS LROUND constant_expression RROUND
-		   ;
+ // alignment_specifier : U_ALIGNAS LROUND type_name RROUND ;
+alignment_specifier : U_ALIGNAS LROUND constant_expression RROUND { $$ = ast_alloc((struct ast_node){ .kind = AST_ALIGNMENT_SPECIFIER, .alignment_specifier.expr = $3 }); }
+		    ;
 
 declarator : direct_declarator { $$ = ast_declarator(0, $1); }
 	   | pointer direct_declarator { $$ = ast_declarator($1, $2); }

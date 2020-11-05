@@ -23,6 +23,9 @@ enum ast_kind {
 	AST_DECLARATION,
 	AST_INIT_DECLARATOR,
 	AST_DECLARATOR,
+	AST_DECLARATION_SPECIFIERS,
+	AST_BUILTIN_TYPE,
+	AST_ALIGNMENT_SPECIFIER,
 	AST_ARRAY_DECLARATOR,
 	AST_FUNCTION_DECLARATOR,
 	AST_PARAMETER_DECLARATION,
@@ -67,18 +70,37 @@ enum ast_bin_kind {
 	AST_BIN_COMMA,
 };
 
-enum ast_type_kind {
-	AST_TYPE_INT,
-	AST_TYPE_CHAR
+enum ast_storage_class_specifier {
+	AST_STORAGE_CLASS_SPECIFIER_TYPEDEF,
+	AST_STORAGE_CLASS_SPECIFIER_EXTERN,
+	AST_STORAGE_CLASS_SPECIFIER_STATIC,
+	AST_STORAGE_CLASS_SPECIFIER_THREAD_LOCAL,
+	AST_STORAGE_CLASS_SPECIFIER_AUTO,
+	AST_STORAGE_CLASS_SPECIFIER_REGISTER,
 };
-
-struct ast_type {
-	enum ast_type_kind kind;
-	int pointer;
-	struct ast_node *array;
-	struct ast_node *ident;
+enum ast_builtin_type {
+	AST_BUILTIN_TYPE_VOID,
+	AST_BUILTIN_TYPE_CHAR,
+	AST_BUILTIN_TYPE_SHORT,
+	AST_BUILTIN_TYPE_INT,
+	AST_BUILTIN_TYPE_LONG,
+	AST_BUILTIN_TYPE_FLOAT,
+	AST_BUILTIN_TYPE_DOUBLE,
+	AST_BUILTIN_TYPE_SIGNED,
+	AST_BUILTIN_TYPE_UNSIGNED,
+	AST_BUILTIN_TYPE_BOOL,
+	AST_BUILTIN_TYPE_COMPLEX,
 };
-
+enum ast_type_qualifier {
+	AST_TYPE_QUALIFIER_CONST,
+	AST_TYPE_QUALIFIER_RESTRICT,
+	AST_TYPE_QUALIFIER_VOLATILE,
+	AST_TYPE_QUALIFIER_ATOMIC,
+};
+enum ast_function_specifier {
+	AST_FUNCTION_SPECIFIER_INLINE,
+	AST_FUNCTION_SPECIFIER_NORETURN,
+};
 
 struct ast_node {
 	enum ast_kind kind;
@@ -99,7 +121,7 @@ struct ast_node {
 		struct { struct ast_node *a, *b; } stmt_if;
 		struct { struct ast_node *a; struct vec args; } call;
 		struct {
-			enum ast_type_kind declaration_specifiers;
+			struct ast_node *declaration_specifiers;
 			struct vec init_declarator_list;
 		} declaration;
 		struct {
@@ -110,6 +132,17 @@ struct ast_node {
 			struct ast_node *direct_declarator;
 		} declarator;
 		struct {
+			struct vec storage_class_specifiers; /* vec<enum ast_storage_class_specifier> */
+			struct vec type_specifiers;
+			struct vec type_qualifiers; /* vec<enum ast_type_qualifier> */
+			struct vec function_specifiers; /* vec<enum ast_function_specifier> */
+			struct vec alignment_specifiers;
+		} declaration_specifiers;
+		enum ast_builtin_type builtin_type;
+		struct {
+			struct ast_node *expr;
+		} alignment_specifier;
+		struct {
 			struct ast_node *direct_declarator;
 			struct ast_node *size;
 		} array_declarator;
@@ -118,12 +151,12 @@ struct ast_node {
 			struct vec parameter_type_list;
 		} function_declarator;
 		struct {
-			enum ast_type_kind declaration_specifiers;
+			struct ast_node *declaration_specifiers;
 			struct ast_node *declarator;
 		} parameter_declaration;
 		struct vec translation_unit; /* vec<struct ast_node *> */
 		struct {
-			enum ast_type_kind declaration_specifiers;
+			struct ast_node *declaration_specifiers;
 			struct ast_node *declarator;
 			struct ast_node *compound_statement;
 		} function_definition;
@@ -146,14 +179,18 @@ struct ast_node *ast_call(struct ast_node *a, struct vec arg_expr_list);
 struct ast_node *ast_stmt_while(struct ast_node *a, struct ast_node *b);
 struct ast_node *ast_stmt_if(struct ast_node *a, struct ast_node *b);
 
-struct ast_node *ast_declaration(enum ast_type_kind declaration_specifiers, struct vec init_declarator_list);
+struct ast_node *ast_declaration(struct ast_node *declaration_specifiers, struct vec init_declarator_list);
 struct ast_node *ast_init_declarator(struct ast_node *declarator, struct ast_node *initializer);
 struct ast_node *ast_declarator(int pointer, struct ast_node *direct_declarator);
+struct ast_node *ast_declaration_specifiers();
+struct ast_node *ast_builtin_type(enum ast_builtin_type builtin_type);
 struct ast_node *ast_array_declarator(struct ast_node *direct_declarator, struct ast_node *size);
 struct ast_node *ast_function_declarator(struct ast_node *direct_declarator, struct vec parameter_type_list);
-struct ast_node *ast_parameter_declaration(struct ast_node *declarator, enum ast_type_kind declaration_specifiers);
+struct ast_node *ast_parameter_declaration(struct ast_node *declarator, struct ast_node *declaration_specifiers);
 struct ast_node *ast_translation_unit(struct ast_node *item);
-struct ast_node *ast_function_definition(enum ast_type_kind declaration_specifiers, struct ast_node *declarator, struct ast_node *compound_statement);
+struct ast_node *ast_function_definition(struct ast_node *declaration_specifiers, struct ast_node *declarator, struct ast_node *compound_statement);
 struct vec ast_list(struct ast_node *item);
+
+struct ast_node *ast_alloc(struct ast_node node);
 
 #endif
