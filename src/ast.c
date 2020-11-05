@@ -106,9 +106,33 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		ast_fprint(f, n->bin.b, ind);
 		fprintf(f, ")");
 		break;
+	case AST_CONDITIONAL:
+		ast_fprint(f, n->conditional.cond, ind);
+		fprintf(f, " ? ");
+		ast_fprint(f, n->conditional.expr, ind);
+		fprintf(f, " : ");
+		ast_fprint(f, n->conditional.expr_else, ind);
+		break;
+	case AST_STMT_LABELED:
+		ast_fprint(f, n->stmt_labeled.ident, ind);
+		fprintf(f, ": ");
+		ast_fprint(f, n->stmt_labeled.stmt, ind);
+		break;
+	case AST_STMT_LABELED_CASE:
+		fprintf(f, "case ");
+		ast_fprint(f, n->stmt_labeled_case.expr, ind);
+		fprintf(f, ": ");
+		ast_fprint(f, n->stmt_labeled_case.stmt, ind);
+		break;
+	case AST_STMT_LABELED_DEFAULT:
+		fprintf(f, "default: ");
+		ast_fprint(f, n->stmt_labeled_default.stmt, ind);
+		break;
 	case AST_STMT_EXPR:
-		ast_fprint(f, n->stmt_expr.a, ind);
-		fprintf(f, ";\n");
+		if (n->stmt_expr.a) {
+			ast_fprint(f, n->stmt_expr.a, ind);
+		}
+		fprintf(f, ";");
 		break;
 	case AST_STMT_COMP:
 		fprintf(f, "{\n");
@@ -116,21 +140,71 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 			const struct ast_node * const *ni = vec_get_c(&n->stmt_comp, i);
 			indent(f, ind + 1);
 			ast_fprint(f, *ni, ind + 1);
+			fprintf(f, "\n");
 		}
 		indent(f, ind);
-		fprintf(f, "}\n");
+		fprintf(f, "}");
 		break;
 	case AST_STMT_WHILE:
 		fprintf(f, "while (");
-		ast_fprint(f, n->stmt_while.a, ind);
+		ast_fprint(f, n->stmt_while.cond, ind);
 		fprintf(f, ") ");
-		ast_fprint(f, n->stmt_while.b, ind);
+		ast_fprint(f, n->stmt_while.stmt, ind);
+		break;
+	case AST_STMT_DO_WHILE:
+		fprintf(f, "do ");
+		ast_fprint(f, n->stmt_do_while.stmt, ind);
+		fprintf(f, " while (");
+		ast_fprint(f, n->stmt_do_while.cond, ind);
+		fprintf(f, ");");
+		break;
+	case AST_STMT_FOR:
+		fprintf(f, "for (");
+		if (n->stmt_for.a) ast_fprint(f, n->stmt_for.a, ind);
+		if (!n->stmt_for.a || n->stmt_for.a->kind != AST_DECLARATION) {
+			fprintf(f, ";");
+		}
+		fprintf(f, " ");
+		if (n->stmt_for.b) ast_fprint(f, n->stmt_for.b, ind);
+		fprintf(f, "; ");
+		if (n->stmt_for.c) ast_fprint(f, n->stmt_for.c, ind);
+		fprintf(f, ") ");
+		ast_fprint(f, n->stmt_for.stmt, ind);
 		break;
 	case AST_STMT_IF:
 		fprintf(f, "if (");
-		ast_fprint(f, n->stmt_if.a, ind);
+		ast_fprint(f, n->stmt_if.cond, ind);
 		fprintf(f, ") ");
-		ast_fprint(f, n->stmt_if.b, ind);
+		ast_fprint(f, n->stmt_if.stmt, ind);
+		if (n->stmt_if.stmt_else) {
+			fprintf(f, " else ");
+			ast_fprint(f, n->stmt_if.stmt_else, ind);
+		}
+		break;
+	case AST_STMT_SWITCH:
+		fprintf(f, "switch (");
+		ast_fprint(f, n->stmt_switch.cond, ind);
+		fprintf(f, ") ");
+		ast_fprint(f, n->stmt_switch.stmt, ind);
+		break;
+	case AST_STMT_GOTO:
+		fprintf(f, "goto ");
+		ast_fprint(f, n->stmt_goto.ident, ind);
+		fprintf(f, ";");
+		break;
+	case AST_STMT_CONTINUE:
+		fprintf(f, "continue;");
+		break;
+	case AST_STMT_BREAK:
+		fprintf(f, "break;");
+		break;
+	case AST_STMT_RETURN:
+		fprintf(f, "return");
+		if (n->stmt_return.expr) {
+			fprintf(f, " ");
+			ast_fprint(f, n->stmt_return.expr, ind);
+		}
+		fprintf(f, ";");
 		break;
 	case AST_CALL:
 		ast_fprint(f, n->call.a, ind);
@@ -152,7 +226,7 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 			ast_fprint(f, *ni, ind);
 			if (i < v->len - 1) fprintf(f, ",");
 		}
-		fprintf(f, ";\n");
+		fprintf(f, ";");
 		break;
 	case AST_INIT_DECLARATOR:
 		ast_fprint(f, n->init_declarator.declarator, ind);
@@ -237,6 +311,7 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		for (int i = 0; i < n->translation_unit.len; ++i) {
 			const struct ast_node * const *ni = vec_get_c(&n->translation_unit, i);
 			ast_fprint(f, *ni, ind);
+			fprintf(f, "\n");
 		}
 		break;
 	case AST_FUNCTION_DEFINITION:
@@ -343,26 +418,6 @@ struct ast_node *ast_call(struct ast_node *a, struct vec arg_expr_list) {
 		.call = {
 			.a = a,
 			.args = arg_expr_list
-		}
-	};
-	return n;
-}
-struct ast_node *ast_stmt_while(struct ast_node *a, struct ast_node *b) {
-	struct ast_node *n = malloc(sizeof(struct ast_node));
-	*n = (struct ast_node){
-		.kind = AST_STMT_WHILE,
-		.stmt_while = {
-			.a = a, .b = b
-		}
-	};
-	return n;
-}
-struct ast_node *ast_stmt_if(struct ast_node *a, struct ast_node *b) {
-	struct ast_node *n = malloc(sizeof(struct ast_node));
-	*n = (struct ast_node){
-		.kind = AST_STMT_IF,
-		.stmt_if = {
-			.a = a, .b = b
 		}
 	};
 	return n;

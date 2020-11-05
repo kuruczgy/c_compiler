@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 %type <n> identifier string_literal
 %type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression constant_expression
 %type <n> declaration struct_or_union_specifier struct_or_union struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list struct_declarator enum_specifier enumerator_list enumerator atomic_type_specifier alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator typedef_name initializer_list designation designator_list designator static_assertion_declaration
-%type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement
+%type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement opt_expression
 %type <n> translation_unit external_declaration function_definition
 
 %type <u> unary_operator
@@ -113,6 +113,17 @@ primary_expression : identifier
 		   | LROUND expression RROUND { $$ = $2; }
 		   ;
 
+ /* TODO: generic selection */
+ /* generic_selection : U_GENERIC LROUND assignment_expression COMMA generic_assoc_list
+		  ;
+generic_assoc_list : generic_association
+		   | generic_assoc_list generic_association
+		   ;
+generic_association : type_name COLON assignment_expression
+		    | DEFAULT COLON assignment_expression
+		    ; */
+
+comma_opt : | COMMA ;
 postfix_expression : primary_expression { $$ = $1; }
 		   | postfix_expression LSQUARE expression RSQUARE { $$ = ast_index($1, $3); }
 		   | postfix_expression LROUND RROUND { $$ = ast_call($1, vec_new_empty(sizeof(struct ast_node *))); }
@@ -121,6 +132,7 @@ postfix_expression : primary_expression { $$ = $1; }
 		   | postfix_expression ARROW IDENT { $$ = ast_member_deref($1, lex_ident); }
 		   | postfix_expression INCR { $$ = ast_unary($1, AST_POST_INCR); }
 		   | postfix_expression DECR { $$ = ast_unary($1, AST_POST_DECR); }
+		   // | LROUND type_name RROUND LCURLY initializer_list comma_opt RCURLY
 		   ;
 
 argument_expression_list : assignment_expression { $$ = vec_new_empty(sizeof(struct ast_node *)); vec_append(&($$), &($1)); }
@@ -197,7 +209,12 @@ orb_expression : andb_expression { $$ = $1; }
 	       ;
 
 conditional_expression : orb_expression { $$ = $1; }
-		       | orb_expression QMARK expression COLON conditional_expression
+		       | orb_expression QMARK expression
+		         COLON conditional_expression {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_CONDITIONAL,
+		.conditional = { .cond = $1, .expr = $3, .expr_else = $5 }
+	}); }
 		       ;
 
 assignment_expression : conditional_expression { $$ = $1; }
@@ -338,22 +355,36 @@ declarator : direct_declarator { $$ = ast_declarator(0, $1); }
 direct_declarator : identifier { $$ = $1; }
 		  | LROUND declarator RROUND { $$ = $2; }
 		  ;
-direct_declarator : direct_declarator LSQUARE RSQUARE { $$ = ast_array_declarator($1, NULL); }
-		  | direct_declarator LSQUARE type_qualifier_list RSQUARE { $$ = ast_array_declarator($1, NULL); }
-		  | direct_declarator LSQUARE assignment_expression RSQUARE { $$ = ast_array_declarator($1, $3); }
-		  | direct_declarator LSQUARE type_qualifier_list assignment_expression RSQUARE { $$ = ast_array_declarator($1, $4); }
+direct_declarator : direct_declarator LSQUARE RSQUARE {
+	$$ = ast_array_declarator($1, NULL); }
+		  | direct_declarator LSQUARE type_qualifier_list RSQUARE {
+	$$ = ast_array_declarator($1, NULL); }
+		  | direct_declarator LSQUARE assignment_expression RSQUARE {
+	$$ = ast_array_declarator($1, $3); }
+		  | direct_declarator LSQUARE type_qualifier_list
+		    assignment_expression RSQUARE {
+	$$ = ast_array_declarator($1, $4); }
 		  ;
-direct_declarator : direct_declarator LSQUARE STATIC assignment_expression RSQUARE { $$ = ast_array_declarator($1, $4); }
-		  | direct_declarator LSQUARE STATIC type_qualifier_list assignment_expression RSQUARE { $$ = ast_array_declarator($1, $5); }
+direct_declarator : direct_declarator LSQUARE STATIC
+		    assignment_expression RSQUARE {
+	$$ = ast_array_declarator($1, $4); }
+		  | direct_declarator LSQUARE STATIC
+		    type_qualifier_list assignment_expression RSQUARE {
+	$$ = ast_array_declarator($1, $5); }
 		  ;
-direct_declarator : direct_declarator LSQUARE type_qualifier_list STATIC assignment_expression RSQUARE { $$ = ast_array_declarator($1, $5); }
+direct_declarator : direct_declarator LSQUARE type_qualifier_list STATIC
+		    assignment_expression RSQUARE {
+	$$ = ast_array_declarator($1, $5); }
 		  ;
- /* direct_declarator : direct_declarator LSQUARE STAR RSQUARE
-		  | direct_declarator LSQUARE type_qualifier_list STAR RSQUARE
-		  ; */
+direct_declarator : direct_declarator LSQUARE STAR RSQUARE {
+	$$ = ast_array_declarator($1, NULL); }
+		  | direct_declarator LSQUARE type_qualifier_list STAR RSQUARE {
+	$$ = ast_array_declarator($1, NULL); }
+		  ;
 direct_declarator : direct_declarator LROUND parameter_type_list RROUND { $$ = ast_function_declarator($1, $3); }
 		  | direct_declarator LROUND RROUND { $$ = ast_function_declarator($1, vec_new_empty(sizeof(struct ast_node *))); }
 		  ;
+ /* TODO: this is K&R style */
 /* direct_declarator : direct_declarator LROUND identifier_list RROUND
 		  ; */
 
@@ -434,17 +465,29 @@ static_assertion_declaration : U_STATIC_ASSERT LROUND constant_expression COMMA 
 
  /* A.2.3 STATEMENTS */
 
-statement : labeled_statement
-	  | compound_statement
-	  | expression_statement
-	  | selection_statement
-	  | iteration_statement
-	  | jump_statement
+statement : labeled_statement { $$ = $1; }
+	  | compound_statement { $$ = $1; }
+	  | expression_statement { $$ = $1; }
+	  | selection_statement { $$ = $1; }
+	  | iteration_statement { $$ = $1; }
+	  | jump_statement { $$ = $1; }
 	  ;
 
-labeled_statement : identifier COLON statement
-		  | CASE constant_expression COLON statement
-		  | DEFAULT COLON statement
+labeled_statement : identifier COLON statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_LABELED,
+		.stmt_labeled = { .ident = $1, .stmt = $3 }
+	}); }
+		  | CASE constant_expression COLON statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_LABELED_CASE,
+		.stmt_labeled_case = { .expr = $2, .stmt = $4 }
+	}); }
+		  | DEFAULT COLON statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_LABELED_DEFAULT,
+		.stmt_labeled_default = { .stmt = $3 }
+	}); }
 		  ;
 
 compound_statement : LCURLY RCURLY { $$ = ast_stmt_comp(); }
@@ -455,30 +498,72 @@ block_item_list : block_item { $$ = ast_stmt_comp(); vec_append(&($$)->stmt_comp
 		| block_item_list block_item { vec_append(&($1)->stmt_comp, &($2)); }
 		;
 
-block_item : declaration
-	   | statement
+block_item : declaration { $$ = $1; }
+	   | statement { $$ = $1; }
 	   ;
 
 expression_statement : SEMI { $$ = ast_stmt_expr(NULL); }
 		     | expression SEMI { $$ = ast_stmt_expr($1); }
 		     ;
 
-selection_statement : IF LROUND expression RROUND statement { $$ = ast_stmt_if($3, $5); }
-		    | IF LROUND expression RROUND statement ELSE statement
-		    | SWITCH LROUND expression RROUND statement
+selection_statement : IF LROUND expression RROUND statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_IF,
+		.stmt_if = { .cond = $3, .stmt = $5 }
+	}); }
+		    | IF LROUND expression RROUND statement ELSE statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_IF,
+		.stmt_if = { .cond = $3, .stmt = $5, .stmt_else = $7 }
+	}); }
+		    | SWITCH LROUND expression RROUND statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_SWITCH,
+		.stmt_switch = { .cond = $3, .stmt = $5 }
+	}); }
 		    ;
 
-opt_expression : | expression ;
-iteration_statement : WHILE LROUND expression RROUND statement { $$ = ast_stmt_while($3, $5); }
-		    | DO statement WHILE LROUND expression RROUND SEMI
-		    | FOR LROUND opt_expression SEMI opt_expression SEMI opt_expression RROUND statement
-		    | FOR LROUND declaration opt_expression SEMI opt_expression RROUND statement
+opt_expression : { $$ = NULL; }
+	       | expression { $$ = $1; }
+	       ;
+iteration_statement : WHILE LROUND expression RROUND statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_WHILE,
+		.stmt_while = { .cond = $3, .stmt = $5 }
+	}); }
+		    | DO statement WHILE LROUND expression RROUND SEMI {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_DO_WHILE,
+		.stmt_do_while = { .cond = $5, .stmt = $2 }
+	}); }
+		    | FOR LROUND opt_expression SEMI opt_expression SEMI
+		      opt_expression RROUND statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_FOR,
+		.stmt_for = { .a = $3, .b = $5, .c = $7, .stmt = $9 }
+	}); }
+		    | FOR LROUND declaration opt_expression SEMI
+		      opt_expression RROUND statement {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_FOR,
+		.stmt_for = { .a = $3, .b = $4, .c = $6, .stmt = $8 }
+	}); }
 		    ;
 
-jump_statement : GOTO identifier SEMI
-	       | CONTINUE SEMI
-	       | BREAK SEMI
-	       | RETURN opt_expression SEMI
+jump_statement : GOTO identifier SEMI {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_GOTO,
+		.stmt_goto = { .ident = $2 }
+	}); }
+	       | CONTINUE SEMI {
+	$$ = ast_alloc((struct ast_node){ .kind = AST_STMT_CONTINUE }); }
+	       | BREAK SEMI {
+	$$ = ast_alloc((struct ast_node){ .kind = AST_STMT_BREAK }); }
+	       | RETURN opt_expression SEMI {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STMT_RETURN,
+		.stmt_return = { .expr = $2 }
+	}); }
 	       ;
 
  /* A.2.4 EXTERNAL DEFINITIONS */
@@ -490,11 +575,12 @@ external_declaration : function_definition { $$ = $1; }
 		     | declaration { $$ = $1; }
 		     ;
 
- // opt_declaration_list : | declaration_list ;
- // function_definition : declaration_specifiers declarator opt_declaration_list compound_statement ;
 function_definition : declaration_specifiers declarator compound_statement { $$ = ast_function_definition($1, $2, $3); }
 		    ;
 
- /* declaration_list : declaration
+ /*TODO: this is the K&R style, it's not important to support it right now...*/
+ /* opt_declaration_list : | declaration_list ;
+function_definition : declaration_specifiers declarator opt_declaration_list compound_statement ;
+declaration_list : declaration
 		 | declaration_list declaration
 		 ; */

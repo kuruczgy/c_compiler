@@ -15,10 +15,21 @@ enum ast_kind {
 	AST_MEMBER_DEREF,
 	AST_UNARY,
 	AST_BIN,
+	AST_CONDITIONAL,
+	AST_STMT_LABELED,
+	AST_STMT_LABELED_CASE,
+	AST_STMT_LABELED_DEFAULT,
 	AST_STMT_EXPR,
 	AST_STMT_COMP,
 	AST_STMT_WHILE,
+	AST_STMT_DO_WHILE,
+	AST_STMT_FOR,
 	AST_STMT_IF,
+	AST_STMT_SWITCH,
+	AST_STMT_GOTO,
+	AST_STMT_CONTINUE,
+	AST_STMT_BREAK,
+	AST_STMT_RETURN,
 	AST_CALL,
 	AST_DECLARATION,
 	AST_INIT_DECLARATOR,
@@ -115,10 +126,22 @@ struct ast_node {
 		struct { struct ast_node *a; char *ident; } member;
 		struct { struct ast_node *a; enum ast_unary_kind kind; } unary;
 		struct { struct ast_node *a, *b; enum ast_bin_kind kind; } bin;
+		struct {
+			struct ast_node *cond;
+			struct ast_node *expr, *expr_else;
+		} conditional;
+		struct { struct ast_node *ident, *stmt; } stmt_labeled;
+		struct { struct ast_node *expr, *stmt; } stmt_labeled_case;
+		struct { struct ast_node *stmt; } stmt_labeled_default;
 		struct { struct ast_node *a; } stmt_expr;
 		struct vec stmt_comp; /* vec<struct ast_node *> */
-		struct { struct ast_node *a, *b; } stmt_while;
-		struct { struct ast_node *a, *b; } stmt_if;
+		struct { struct ast_node *cond, *stmt; } stmt_while;
+		struct { struct ast_node *cond, *stmt; } stmt_do_while;
+		struct { struct ast_node *a, *b, *c, *stmt; } stmt_for;
+		struct { struct ast_node *cond, *stmt, *stmt_else; } stmt_if;
+		struct { struct ast_node *cond, *stmt; } stmt_switch;
+		struct { struct ast_node *ident; } stmt_goto;
+		struct { struct ast_node *expr; } stmt_return;
 		struct { struct ast_node *a; struct vec args; } call;
 		struct {
 			struct ast_node *declaration_specifiers;
@@ -176,8 +199,6 @@ struct ast_node *ast_bin(struct ast_node *a, struct ast_node *b, enum ast_bin_ki
 struct ast_node *ast_stmt_expr(struct ast_node *a);
 struct ast_node *ast_stmt_comp();
 struct ast_node *ast_call(struct ast_node *a, struct vec arg_expr_list);
-struct ast_node *ast_stmt_while(struct ast_node *a, struct ast_node *b);
-struct ast_node *ast_stmt_if(struct ast_node *a, struct ast_node *b);
 
 struct ast_node *ast_declaration(struct ast_node *declaration_specifiers, struct vec init_declarator_list);
 struct ast_node *ast_init_declarator(struct ast_node *declarator, struct ast_node *initializer);
