@@ -20,7 +20,14 @@ enum ast_kind {
 	AST_STMT_WHILE,
 	AST_STMT_IF,
 	AST_CALL,
-	AST_DECL,
+	AST_DECLARATION,
+	AST_INIT_DECLARATOR,
+	AST_DECLARATOR,
+	AST_ARRAY_DECLARATOR,
+	AST_FUNCTION_DECLARATOR,
+	AST_PARAMETER_DECLARATION,
+	AST_TRANSLATION_UNIT,
+	AST_FUNCTION_DEFINITION,
 };
 
 enum ast_unary_kind {
@@ -91,7 +98,35 @@ struct ast_node {
 		struct { struct ast_node *a, *b; } stmt_while;
 		struct { struct ast_node *a, *b; } stmt_if;
 		struct { struct ast_node *a; struct vec args; } call;
-		struct { struct ast_type t; } decl;
+		struct {
+			enum ast_type_kind declaration_specifiers;
+			struct vec init_declarator_list;
+		} declaration;
+		struct {
+			struct ast_node *declarator, *initializer;
+		} init_declarator;
+		struct {
+			int pointer;
+			struct ast_node *direct_declarator;
+		} declarator;
+		struct {
+			struct ast_node *direct_declarator;
+			struct ast_node *size;
+		} array_declarator;
+		struct {
+			struct ast_node *direct_declarator;
+			struct vec parameter_type_list;
+		} function_declarator;
+		struct {
+			enum ast_type_kind declaration_specifiers;
+			struct ast_node *declarator;
+		} parameter_declaration;
+		struct vec translation_unit; /* vec<struct ast_node *> */
+		struct {
+			enum ast_type_kind declaration_specifiers;
+			struct ast_node *declarator;
+			struct ast_node *compound_statement;
+		} function_definition;
 	};
 };
 
@@ -108,8 +143,17 @@ struct ast_node *ast_bin(struct ast_node *a, struct ast_node *b, enum ast_bin_ki
 struct ast_node *ast_stmt_expr(struct ast_node *a);
 struct ast_node *ast_stmt_comp();
 struct ast_node *ast_call(struct ast_node *a, struct vec arg_expr_list);
-struct ast_node *ast_decl(struct ast_type t);
 struct ast_node *ast_stmt_while(struct ast_node *a, struct ast_node *b);
 struct ast_node *ast_stmt_if(struct ast_node *a, struct ast_node *b);
+
+struct ast_node *ast_declaration(enum ast_type_kind declaration_specifiers, struct vec init_declarator_list);
+struct ast_node *ast_init_declarator(struct ast_node *declarator, struct ast_node *initializer);
+struct ast_node *ast_declarator(int pointer, struct ast_node *direct_declarator);
+struct ast_node *ast_array_declarator(struct ast_node *direct_declarator, struct ast_node *size);
+struct ast_node *ast_function_declarator(struct ast_node *direct_declarator, struct vec parameter_type_list);
+struct ast_node *ast_parameter_declaration(struct ast_node *declarator, enum ast_type_kind declaration_specifiers);
+struct ast_node *ast_translation_unit(struct ast_node *item);
+struct ast_node *ast_function_definition(enum ast_type_kind declaration_specifiers, struct ast_node *declarator, struct ast_node *compound_statement);
+struct vec ast_list(struct ast_node *item);
 
 #endif

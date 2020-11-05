@@ -34,8 +34,8 @@ int main(int argc, char *argv[])
 
 	if (strcmp(argv[1], "ast") == 0) {
 		ast_fprint(stdout, n, 0);
-	} else if (strcmp(argv[1], "asm") == 0) {
-		cg_gen(n);
+	// } else if (strcmp(argv[1], "asm") == 0) {
+	// 	cg_gen(n);
 	} else {
 		return EXIT_FAILURE;
 	}
@@ -51,7 +51,8 @@ int main(int argc, char *argv[])
 	struct vec argument_expr_list; /* struct vec<ast_node *> */
 	enum ast_type_kind type_kind;
 	struct ast_type type;
-	int k;
+	int integer;
+	struct vec list; /* struct vec<ast_node *> */
 }
 
 %token ALIGNOF AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
@@ -70,21 +71,25 @@ int main(int argc, char *argv[])
 
 %type <n> identifier string_literal
 %type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression
-%type <n> declaration storage_class_specifier struct_or_union_specifier struct_or_union struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list struct_declarator enum_specifier enumerator_list enumerator atomic_type_specifier type_qualifier function_specifier alignment_specifier type_qualifier_list parameter_type_list parameter_list parameter_declaration identifier_list type_name abstract_declarator direct_abstract_declarator typedef_name initializer initializer_list designation designator_list designator static_assertion_declaration
+%type <n> declaration storage_class_specifier struct_or_union_specifier struct_or_union struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list struct_declarator enum_specifier enumerator_list enumerator atomic_type_specifier type_qualifier function_specifier alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator typedef_name initializer_list designation designator_list designator static_assertion_declaration
 %type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement
+%type <n> translation_unit external_declaration function_definition
 
 %type <u> unary_operator
 %type <b> assigment_operator
 %type <argument_expr_list> argument_expression_list
 %type <type_kind> type_specifier declaration_specifiers
-%type <type> init_declarator_list init_declarator direct_declarator declarator
-%type <k> pointer
+%type <n> direct_declarator declarator
+%type <integer> pointer
+
+%type <n> init_declarator initializer parameter_declaration
+%type <list> init_declarator_list parameter_type_list parameter_list
 
 %start start
 
 %%
 
-start : compound_statement { *res = $1; } ;
+start : translation_unit { *res = $1; } ;
 
 string_literal : STRING { $$ = ast_string(lex_ident); } ;
 identifier : IDENT { $$ = ast_ident(lex_ident); } ;
@@ -203,7 +208,7 @@ constant_expression : conditional_expression
  /* A.2.2 DECLARATIONS */
 
 declaration : declaration_specifiers SEMI
-	    | declaration_specifiers init_declarator_list SEMI { $2.kind = $1; $$ = ast_decl($2); }
+	    | declaration_specifiers init_declarator_list SEMI { $$ = ast_declaration($1, $2); }
 	    | static_assertion_declaration
 	    ;
 
@@ -219,12 +224,12 @@ declaration_specifiers : storage_class_specifier
 		       | alignment_specifier declaration_specifiers
 		       ;
 
-init_declarator_list : init_declarator
-		     // | init_declarator_list COMMA init_declarator
+init_declarator_list : init_declarator { $$ = ast_list($1); }
+		     | init_declarator_list COMMA init_declarator { vec_append(&($1), &($3)); $$ = $1; }
 		     ;
 
-init_declarator : declarator { $$ = $1; }
-		// | declarator EQ initializer
+init_declarator : declarator { $$ = ast_init_declarator($1, NULL); }
+		| declarator EQ initializer { $$ = ast_init_declarator($1, $3); }
 		;
 
 storage_class_specifier : TYPEDEF | EXTERN | STATIC | U_THREAD_LOCAL | AUTO | REGISTER
@@ -306,30 +311,30 @@ alignment_specifier : U_ALIGNAS LROUND type_name RROUND
 		   | U_ALIGNAS LROUND constant_expression RROUND
 		   ;
 
-declarator : direct_declarator { $$ = $1; }
-	   | pointer direct_declarator { $$ = $2; ($$).pointer = $1; }
+declarator : direct_declarator { $$ = ast_declarator(0, $1); }
+	   | pointer direct_declarator { $$ = ast_declarator($1, $2); }
 	   ;
 
-direct_declarator : identifier { $$ = (struct ast_type){ .ident = $1 }; }
-		  | LROUND identifier RROUND { $$ = (struct ast_type){ .ident = $2 }; }
+direct_declarator : identifier { $$ = $1; }
+		  | LROUND declarator RROUND { $$ = $2; }
 		  ;
-direct_declarator : // direct_declarator LSQUARE RSQUARE
-		  // | direct_declarator LSQUARE type_qualifier_list RSQUARE
-		  | direct_declarator LSQUARE assignment_expression RSQUARE { $$ = $1; ($$).array = $3; }
-		  | direct_declarator LSQUARE type_qualifier_list assignment_expression RSQUARE { $$ = $1; ($$).array = $4; }
+direct_declarator : direct_declarator LSQUARE RSQUARE { $$ = ast_array_declarator($1, NULL); }
+		  | direct_declarator LSQUARE type_qualifier_list RSQUARE { $$ = ast_array_declarator($1, NULL); }
+		  | direct_declarator LSQUARE assignment_expression RSQUARE { $$ = ast_array_declarator($1, $3); }
+		  | direct_declarator LSQUARE type_qualifier_list assignment_expression RSQUARE { $$ = ast_array_declarator($1, $4); }
 		  ;
- /* direct_declarator : direct_declarator LSQUARE STATIC assignment_expression RSQUARE
-		  | direct_declarator LSQUARE STATIC type_qualifier_list assignment_expression RSQUARE
+direct_declarator : direct_declarator LSQUARE STATIC assignment_expression RSQUARE { $$ = ast_array_declarator($1, $4); }
+		  | direct_declarator LSQUARE STATIC type_qualifier_list assignment_expression RSQUARE { $$ = ast_array_declarator($1, $5); }
 		  ;
-direct_declarator : direct_declarator LSQUARE type_qualifier_list STATIC assignment_expression RSQUARE
+direct_declarator : direct_declarator LSQUARE type_qualifier_list STATIC assignment_expression RSQUARE { $$ = ast_array_declarator($1, $5); }
 		  ;
-direct_declarator : direct_declarator LSQUARE STAR RSQUARE
+ /* direct_declarator : direct_declarator LSQUARE STAR RSQUARE
 		  | direct_declarator LSQUARE type_qualifier_list STAR RSQUARE
+		  ; */
+direct_declarator : direct_declarator LROUND parameter_type_list RROUND { $$ = ast_function_declarator($1, $3); }
+		  | direct_declarator LROUND RROUND { $$ = ast_function_declarator($1, vec_new_empty(sizeof(struct ast_node *))); }
 		  ;
-direct_declarator : direct_declarator LROUND parameter_type_list RROUND
-		  ;
-direct_declarator : direct_declarator LROUND RROUND
-		  | direct_declarator LROUND identifier_list RROUND
+/* direct_declarator : direct_declarator LROUND identifier_list RROUND
 		  ; */
 
 pointer : STAR { $$ = 1; }
@@ -342,17 +347,17 @@ type_qualifier_list : type_qualifier
 		    | type_qualifier_list type_qualifier
 		    ;
 
-parameter_type_list : parameter_list
-		    | parameter_list COMMA ELLIPSIS
+parameter_type_list : parameter_list { $$ = $1; }
+		    // | parameter_list COMMA ELLIPSIS
 		    ;
 
-parameter_list : parameter_declaration
-	       | parameter_list COMMA parameter_declaration
+parameter_list : parameter_declaration { $$ = ast_list($1); }
+	       | parameter_list COMMA parameter_declaration { vec_append(&($1), &($3)); $$ = $1; }
 	       ;
 
-parameter_declaration : declaration_specifiers declarator
-		      | declaration_specifiers
-		      | declaration_specifiers abstract_declarator
+parameter_declaration : declaration_specifiers declarator { $$ = ast_parameter_declaration($2, $1); }
+		      | declaration_specifiers { $$ = ast_parameter_declaration(NULL, $1); }
+		      // | declaration_specifiers abstract_declarator
 		      ;
 
 identifier_list : identifier
@@ -383,9 +388,9 @@ direct_abstract_declarator : LROUND abstract_declarator RROUND
 typedef_name : identifier
 	     ;
 
-initializer : assignment_expression
-	    | LCURLY initializer_list RCURLY
-	    | LCURLY initializer_list COMMA RCURLY
+initializer : assignment_expression { $$ = $1; }
+	    // | LCURLY initializer_list RCURLY
+	    // | LCURLY initializer_list COMMA RCURLY
 	    ;
 
 opt_designation : | designation ;
@@ -455,3 +460,21 @@ jump_statement : GOTO identifier SEMI
 	       | BREAK SEMI
 	       | RETURN opt_expression SEMI
 	       ;
+
+ /* A.2.4 EXTERNAL DEFINITIONS */
+translation_unit : external_declaration { $$ = ast_translation_unit($1); }
+		 | translation_unit external_declaration { vec_append(&($1)->translation_unit, &($2)); $$ = $1; }
+		 ;
+
+external_declaration : function_definition { $$ = $1; }
+		     | declaration { $$ = $1; }
+		     ;
+
+ // opt_declaration_list : | declaration_list ;
+ // function_definition : declaration_specifiers declarator opt_declaration_list compound_statement ;
+function_definition : declaration_specifiers declarator compound_statement { $$ = ast_function_definition($1, $2, $3); }
+		    ;
+
+ /* declaration_list : declaration
+		 | declaration_list declaration
+		 ; */
