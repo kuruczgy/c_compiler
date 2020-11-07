@@ -35,6 +35,7 @@ enum ast_kind {
 	AST_INIT_DECLARATOR,
 	AST_DECLARATOR,
 	AST_DECLARATION_SPECIFIERS,
+	AST_SPECIFIER_QUALIFIER_LIST,
 	AST_BUILTIN_TYPE,
 	AST_ALIGNMENT_SPECIFIER,
 	AST_ARRAY_DECLARATOR,
@@ -42,6 +43,10 @@ enum ast_kind {
 	AST_PARAMETER_DECLARATION,
 	AST_TRANSLATION_UNIT,
 	AST_FUNCTION_DEFINITION,
+	AST_SU_SPECIFIER,
+	AST_SU_SPECIFIER_INCOMPLETE,
+	AST_STRUCT_DECLARATION,
+	AST_STRUCT_DECLARATOR,
 };
 
 enum ast_unary_kind {
@@ -112,6 +117,10 @@ enum ast_function_specifier {
 	AST_FUNCTION_SPECIFIER_INLINE,
 	AST_FUNCTION_SPECIFIER_NORETURN,
 };
+enum ast_su {
+	AST_SU_STRUCT,
+	AST_SU_UNION,
+};
 
 struct ast_node {
 	enum ast_kind kind;
@@ -156,11 +165,15 @@ struct ast_node {
 		} declarator;
 		struct {
 			struct vec storage_class_specifiers; /* vec<enum ast_storage_class_specifier> */
-			struct vec type_specifiers;
+			struct vec type_specifiers; /* vec<struct ast_node *> */
 			struct vec type_qualifiers; /* vec<enum ast_type_qualifier> */
 			struct vec function_specifiers; /* vec<enum ast_function_specifier> */
-			struct vec alignment_specifiers;
+			struct vec alignment_specifiers; /* vec<struct ast_node *> */
 		} declaration_specifiers;
+		struct {
+			struct vec type_specifiers; /* vec<struct ast_node *> */
+			struct vec type_qualifiers; /* vec<enum ast_type_qualifier> */
+		} specifier_qualifier_list;
 		enum ast_builtin_type builtin_type;
 		struct {
 			struct ast_node *expr;
@@ -183,6 +196,23 @@ struct ast_node {
 			struct ast_node *declarator;
 			struct ast_node *compound_statement;
 		} function_definition;
+		struct {
+			enum ast_su su;
+			struct ast_node *ident;
+			struct vec declarations; /* vec<struct ast_node *> */
+		} su_specifier;
+		struct {
+			enum ast_su su;
+			struct ast_node *ident;
+		} su_specifier_incomplete;
+		struct {
+			struct ast_node *specifier_qualifier_list;
+			struct vec declarators; /* vec<struct ast_node *> */
+		} struct_declaration;
+		struct {
+			struct ast_node *declarator;
+			struct ast_node *bitfield_expr;
+		} struct_declarator;
 	};
 };
 
@@ -204,6 +234,7 @@ struct ast_node *ast_declaration(struct ast_node *declaration_specifiers, struct
 struct ast_node *ast_init_declarator(struct ast_node *declarator, struct ast_node *initializer);
 struct ast_node *ast_declarator(int pointer, struct ast_node *direct_declarator);
 struct ast_node *ast_declaration_specifiers();
+struct ast_node *ast_specifier_qualifier_list();
 struct ast_node *ast_builtin_type(enum ast_builtin_type builtin_type);
 struct ast_node *ast_array_declarator(struct ast_node *direct_declarator, struct ast_node *size);
 struct ast_node *ast_function_declarator(struct ast_node *direct_declarator, struct vec parameter_type_list);

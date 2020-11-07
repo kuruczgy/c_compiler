@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
 	enum ast_builtin_type builtin_type;
 	enum ast_type_qualifier type_qualifier;
 	enum ast_function_specifier function_specifier;
+	enum ast_su struct_or_union;
 }
 
 %token ALIGNOF AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
@@ -73,7 +74,7 @@ int main(int argc, char *argv[])
 
 %type <n> identifier string_literal
 %type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression constant_expression
-%type <n> declaration struct_or_union_specifier struct_or_union struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list struct_declarator enum_specifier enumerator_list enumerator atomic_type_specifier alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator typedef_name initializer_list designation designator_list designator static_assertion_declaration
+%type <n> declaration struct_or_union_specifier specifier_qualifier_list struct_declarator enum_specifier enumerator_list enumerator alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator initializer_list designation designator_list designator static_assertion_declaration
 %type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement opt_expression
 %type <n> translation_unit external_declaration function_definition
 
@@ -84,13 +85,14 @@ int main(int argc, char *argv[])
 %type <n> direct_declarator declarator
 %type <integer> pointer
 
-%type <n> init_declarator initializer parameter_declaration
-%type <list> init_declarator_list parameter_type_list parameter_list
+%type <n> init_declarator initializer parameter_declaration struct_declaration
+%type <list> init_declarator_list parameter_type_list parameter_list struct_declaration_list struct_declarator_list
 
 %type <storage_class_specifier> storage_class_specifier
 %type <builtin_type> builtin_type
 %type <type_qualifier> type_qualifier
 %type <function_specifier> function_specifier
+%type <struct_or_union> struct_or_union
 
 %type <n> declaration_specifiers
 
@@ -233,7 +235,7 @@ constant_expression : conditional_expression
 
  /* A.2.2 DECLARATIONS */
 
-declaration : declaration_specifiers SEMI
+declaration : declaration_specifiers SEMI { $$ = ast_declaration($1, vec_new_empty(sizeof(struct ast_node *))); }
 	    | declaration_specifiers init_declarator_list SEMI { $$ = ast_declaration($1, $2); }
 	    | static_assertion_declaration
 	    ;
@@ -279,41 +281,90 @@ builtin_type : VOID { $$ = AST_BUILTIN_TYPE_VOID; }
 	     | U_COMPLEX { $$ = AST_BUILTIN_TYPE_COMPLEX; }
 	     ;
 type_specifier : builtin_type { $$ = ast_builtin_type($1); }
-	       // | atomic_type_specifier
-	       // | struct_or_union_specifier
+	       // | atomic_type_specifier // TODO: this is not context free
+	       | struct_or_union_specifier
 	       // | enum_specifier
-	       // | typedef_name
+	       // | typedef_name { $$ = $1; } // TODO: this is not context free
 	       ;
 
-struct_or_union_specifier : struct_or_union LCURLY struct_declaration_list RCURLY
-			  | struct_or_union identifier LCURLY struct_declaration_list RCURLY
-			  | struct_or_union identifier
+struct_or_union_specifier : struct_or_union LCURLY
+			    struct_declaration_list RCURLY {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_SU_SPECIFIER,
+		.su_specifier = { .su = $1, .ident = NULL, .declarations = $3 }
+	}); }
+			  | struct_or_union identifier LCURLY
+			    struct_declaration_list RCURLY {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_SU_SPECIFIER,
+		.su_specifier = { .su = $1, .ident = $2, .declarations = $4 }
+	}); }
+			  | struct_or_union identifier {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_SU_SPECIFIER_INCOMPLETE,
+		.su_specifier = { .su = $1, .ident = $2 }
+	}); }
 			  ;
 
-struct_or_union : STRUCT | UNION
+struct_or_union : STRUCT { $$ = AST_SU_STRUCT; }
+		| UNION { $$ = AST_SU_UNION; }
 		;
 
-struct_declaration_list : struct_declaration
-			| struct_declaration_list struct_declaration
+struct_declaration_list : struct_declaration { $$ = ast_list($1); }
+			| struct_declaration_list struct_declaration { vec_append(&($1), &($2)); $$ = $1; }
 			;
 
-struct_declaration : specifier_qualifier_list SEMI
-		   | specifier_qualifier_list struct_declarator_list SEMI
-		   | static_assertion_declaration
+struct_declaration : specifier_qualifier_list SEMI {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STRUCT_DECLARATION,
+		.struct_declaration = {
+			.specifier_qualifier_list = $1,
+			.declarators = vec_new_empty(sizeof(struct ast_node *))
+		}
+	}); }
+		   | specifier_qualifier_list struct_declarator_list SEMI {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STRUCT_DECLARATION,
+		.struct_declaration = {
+			.specifier_qualifier_list = $1,
+			.declarators = $2
+		}
+	}); }
+		   | static_assertion_declaration { $$ = $1; }
 		   ;
 
-specifier_qualifier_list : type_specifier
-			 | type_specifier specifier_qualifier_list
-			 | type_qualifier specifier_qualifier_list
+specifier_qualifier_list : type_specifier {
+	$$ = ast_specifier_qualifier_list();
+	vec_append(&($$)->specifier_qualifier_list.type_specifiers, &($1)); }
+			 | type_specifier specifier_qualifier_list {
+	vec_append(&($2)->specifier_qualifier_list.type_specifiers, &($1));
+	$$ = $2; }
+			 | type_qualifier specifier_qualifier_list {
+	vec_append(&($2)->specifier_qualifier_list.type_qualifiers, &($1));
+	$$ = $2; }
 			 ;
 
-struct_declarator_list : struct_declarator
-		       | struct_declarator_list COMMA struct_declarator
+struct_declarator_list : struct_declarator { $$ = ast_list($1); }
+		       | struct_declarator_list COMMA struct_declarator {
+	vec_append(&($1), &($3));
+	$$ = $1; }
 		       ;
 
-struct_declarator : declarator
-		  | COLON constant_expression
-		  | declarator COLON constant_expression
+struct_declarator : declarator {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STRUCT_DECLARATOR,
+		.struct_declarator = { .declarator = $1, .bitfield_expr = NULL }
+	}); }
+		  | COLON constant_expression {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STRUCT_DECLARATOR,
+		.struct_declarator = { .declarator = NULL, .bitfield_expr = $2 }
+	}); }
+		  | declarator COLON constant_expression {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STRUCT_DECLARATOR,
+		.struct_declarator = { .declarator = $1, .bitfield_expr = $3 }
+	}); }
 		  ;
 
 enum_specifier : ENUM LCURLY enumerator_list RCURLY
@@ -331,8 +382,8 @@ enumerator : enumeration_constant
 	   | enumeration_constant EQ constant_expression
 	   ;
 
-atomic_type_specifier : U_ATOMIC LROUND type_name RROUND
-		      ;
+ // TODO: this is not context free
+ // atomic_type_specifier : U_ATOMIC LROUND type_name RROUND ;
 
 type_qualifier : CONST { $$ = AST_TYPE_QUALIFIER_CONST; }
 	       | RESTRICT { $$ = AST_TYPE_QUALIFIER_RESTRICT; }
@@ -436,8 +487,8 @@ direct_abstract_declarator : LROUND abstract_declarator RROUND
 			   | opt_direct_astract_declarator LROUND opt_parameter_type_list RROUND
 			   ;
 
-typedef_name : identifier
-	     ;
+ // TODO: this is not context free
+ // typedef_name : identifier { $$ = $1; } ;
 
 initializer : assignment_expression { $$ = $1; }
 	    // | LCURLY initializer_list RCURLY
