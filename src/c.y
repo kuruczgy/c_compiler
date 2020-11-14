@@ -73,8 +73,8 @@ int main(int argc, char *argv[])
 %token COMMA
 
 %type <n> identifier string_literal enumeration_constant
-%type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression constant_expression
-%type <n> declaration struct_or_union_specifier specifier_qualifier_list struct_declarator enum_specifier enumerator alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator designation designator static_assertion_declaration opt_designation initializer_list_item
+%type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression constant_expression opt_assignment_expression
+%type <n> declaration struct_or_union_specifier specifier_qualifier_list struct_declarator enum_specifier enumerator alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator opt_abstract_declarator direct_abstract_declarator  opt_direct_astract_declarator designation designator static_assertion_declaration opt_designation initializer_list_item
 %type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement opt_expression
 %type <n> translation_unit external_declaration function_definition
 
@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 %type <integer> pointer
 
 %type <n> init_declarator initializer parameter_declaration struct_declaration
-%type <list> init_declarator_list parameter_type_list parameter_list struct_declaration_list struct_declarator_list enumerator_list designator_list initializer_list
+%type <list> init_declarator_list parameter_type_list opt_parameter_type_list parameter_list struct_declaration_list struct_declarator_list enumerator_list designator_list initializer_list
 
 %type <storage_class_specifier> storage_class_specifier
 %type <builtin_type> builtin_type
@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
 
 %type <n> declaration_specifiers
 
-%type <n> identifier_opt
+%type <n> opt_identifier
 
 %start start
 
@@ -104,8 +104,14 @@ int main(int argc, char *argv[])
 
 start : translation_unit { *res = $1; } ;
 
-comma_opt : | COMMA ;
-identifier_opt : { $$ = NULL; } | identifier { $$ = $1; } ;
+opt_comma : | COMMA ;
+opt_identifier : { $$ = NULL; } | identifier { $$ = $1; } ;
+opt_abstract_declarator : { $$ = NULL; } | abstract_declarator { $$ = $1; } ;
+opt_direct_astract_declarator : { $$ = NULL; } | direct_abstract_declarator { $$ = $1; };
+opt_type_qualifier_list : | type_qualifier_list ;
+opt_assignment_expression : { $$ = NULL; } | assignment_expression { $$ = $1; };
+opt_parameter_type_list : { $$ = vec_new_empty(sizeof(struct ast_node *)); }
+			| parameter_type_list { $$ = $1; };
 
 string_literal : STRING { $$ = ast_string(lex_ident); } ;
 identifier : IDENT { $$ = ast_ident(lex_ident); } ;
@@ -138,7 +144,15 @@ postfix_expression : primary_expression { $$ = $1; }
 		   | postfix_expression ARROW IDENT { $$ = ast_member_deref($1, lex_ident); }
 		   | postfix_expression INCR { $$ = ast_unary($1, AST_POST_INCR); }
 		   | postfix_expression DECR { $$ = ast_unary($1, AST_POST_DECR); }
-		   // | LROUND type_name RROUND LCURLY initializer_list comma_opt RCURLY
+		   | LROUND type_name RROUND LCURLY initializer_list opt_comma
+		     RCURLY {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_COMPOUND_LITERAL,
+		.compound_literal = {
+			.type_name = $2,
+			.list = $5
+		}
+	}); }
 		   ;
 
 argument_expression_list : assignment_expression { $$ = vec_new_empty(sizeof(struct ast_node *)); vec_append(&($$), &($1)); }
@@ -150,8 +164,16 @@ unary_expression : postfix_expression { $$ = $1; }
 		 | DECR unary_expression { $$ = ast_unary($2, AST_PRE_DECR); }
 		 | unary_operator cast_expression { $$ = ast_unary($2, $1); }
 		 | SIZEOF unary_expression { $$ = ast_unary($2, AST_UNARY_SIZEOF); }
-		 | SIZEOF LROUND type_name RROUND
-		 | ALIGNOF LROUND type_name RROUND
+		 | SIZEOF LROUND type_name RROUND {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_SIZEOF_EXPR,
+		.sizeof_expr.type_name = $3
+	}); }
+		 | ALIGNOF LROUND type_name RROUND {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_ALIGNOF_EXPR,
+		.alignof_expr.type_name = $3
+	}); }
 		 ;
 
 unary_operator : AND { $$ = AST_UNARY_REF; }
@@ -163,7 +185,11 @@ unary_operator : AND { $$ = AST_UNARY_REF; }
 	       ;
 
 cast_expression : unary_expression { $$ = $1; }
-		| LROUND type_name RROUND cast_expression
+		| LROUND type_name RROUND cast_expression {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_CAST,
+		.cast = { .type_name = $2, .expr = $4 }
+	}); }
 		;
 
 multiplicative_expression : cast_expression { $$ = $1; }
@@ -371,7 +397,7 @@ struct_declarator : declarator {
 	}); }
 		  ;
 
-enum_specifier : ENUM identifier_opt LCURLY enumerator_list comma_opt RCURLY {
+enum_specifier : ENUM opt_identifier LCURLY enumerator_list opt_comma RCURLY {
 	$$ = ast_alloc((struct ast_node){
 		.kind = AST_ENUM_SPECIFIER,
 		.enum_specifier = { .ident = $2, .enumerators = $4 }
@@ -414,7 +440,7 @@ function_specifier : INLINE { $$ = AST_FUNCTION_SPECIFIER_INLINE; }
 		   | U_NORETURN { $$ = AST_FUNCTION_SPECIFIER_NORETURN; }
 		   ;
 
- // alignment_specifier : U_ALIGNAS LROUND type_name RROUND ;
+// alignment_specifier : U_ALIGNAS LROUND type_name RROUND ;
 alignment_specifier : U_ALIGNAS LROUND constant_expression RROUND { $$ = ast_alloc((struct ast_node){ .kind = AST_ALIGNMENT_SPECIFIER, .alignment_specifier.expr = $3 }); }
 		    ;
 
@@ -424,35 +450,20 @@ declarator : direct_declarator { $$ = ast_declarator(0, $1); }
 
 direct_declarator : identifier { $$ = $1; }
 		  | LROUND declarator RROUND { $$ = $2; }
-		  ;
-direct_declarator : direct_declarator LSQUARE RSQUARE {
-	$$ = ast_array_declarator($1, NULL); }
-		  | direct_declarator LSQUARE type_qualifier_list RSQUARE {
-	$$ = ast_array_declarator($1, NULL); }
-		  | direct_declarator LSQUARE assignment_expression RSQUARE {
-	$$ = ast_array_declarator($1, $3); }
-		  | direct_declarator LSQUARE type_qualifier_list
-		    assignment_expression RSQUARE {
-	$$ = ast_array_declarator($1, $4); }
-		  ;
-direct_declarator : direct_declarator LSQUARE STATIC
-		    assignment_expression RSQUARE {
-	$$ = ast_array_declarator($1, $4); }
-		  | direct_declarator LSQUARE STATIC
-		    type_qualifier_list assignment_expression RSQUARE {
-	$$ = ast_array_declarator($1, $5); }
-		  ;
-direct_declarator : direct_declarator LSQUARE type_qualifier_list STATIC
-		    assignment_expression RSQUARE {
-	$$ = ast_array_declarator($1, $5); }
-		  ;
-direct_declarator : direct_declarator LSQUARE STAR RSQUARE {
-	$$ = ast_array_declarator($1, NULL); }
-		  | direct_declarator LSQUARE type_qualifier_list STAR RSQUARE {
-	$$ = ast_array_declarator($1, NULL); }
-		  ;
-direct_declarator : direct_declarator LROUND parameter_type_list RROUND { $$ = ast_function_declarator($1, $3); }
-		  | direct_declarator LROUND RROUND { $$ = ast_function_declarator($1, vec_new_empty(sizeof(struct ast_node *))); }
+		  | direct_declarator LSQUARE opt_type_qualifier_list
+		    opt_assignment_expression
+		    RSQUARE { $$ = ast_array_declarator($1, $4); }
+		  | direct_declarator LSQUARE STATIC opt_type_qualifier_list
+		    assignment_expression
+		    RSQUARE { $$ = ast_array_declarator($1, $5); }
+		  | direct_declarator LSQUARE type_qualifier_list STATIC
+		    assignment_expression
+		    RSQUARE { $$ = ast_array_declarator($1, $5); }
+		  | direct_declarator LSQUARE opt_type_qualifier_list STAR
+		    RSQUARE { $$ = ast_array_declarator($1, NULL); }
+		  | direct_declarator LROUND opt_parameter_type_list
+		    RROUND { $$ = ast_function_declarator($1, $3); }
+		  // | direct_declarator LROUND opt_identifier_list RROUND
 		  ;
  /* TODO: this is K&R style */
 /* direct_declarator : direct_declarator LROUND identifier_list RROUND
@@ -485,32 +496,44 @@ identifier_list : identifier
 		| identifier_list COMMA identifier
 		;
 
-type_name : specifier_qualifier_list
-	  | specifier_qualifier_list abstract_declarator
+type_name : specifier_qualifier_list opt_abstract_declarator {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_TYPE_NAME,
+		.type_name = {
+			.specifier_qualifier_list = $1,
+			.declarator = $2
+		}
+	}); }
 	  ;
 
-abstract_declarator : pointer
-		    | direct_abstract_declarator
+abstract_declarator : pointer { $$ = ast_declarator($1, NULL); }
+		    | direct_abstract_declarator { $$ = ast_declarator(0, $1); }
 		    | pointer direct_abstract_declarator
+		      { $$ = ast_declarator($1, $2); }
 		    ;
 
-opt_direct_astract_declarator : | direct_abstract_declarator ;
-opt_type_qualifier_list : | type_qualifier_list ;
-opt_assignment_expression : | assignment_expression ;
-opt_parameter_type_list : | parameter_type_list ;
-direct_abstract_declarator : LROUND abstract_declarator RROUND
-			   | opt_direct_astract_declarator LSQUARE opt_type_qualifier_list opt_assignment_expression RSQUARE
-			   | opt_direct_astract_declarator LSQUARE STATIC opt_type_qualifier_list assignment_expression RSQUARE
-			   | opt_direct_astract_declarator LSQUARE type_qualifier_list STATIC assignment_expression RSQUARE
-			   | opt_direct_astract_declarator LSQUARE STAR RSQUARE
-			   | opt_direct_astract_declarator LROUND opt_parameter_type_list RROUND
+direct_abstract_declarator : LROUND abstract_declarator RROUND { $$ = $2; }
+			   | opt_direct_astract_declarator LSQUARE
+			     opt_type_qualifier_list opt_assignment_expression
+			     RSQUARE { $$ = ast_array_declarator($1, $4); }
+			   | opt_direct_astract_declarator LSQUARE STATIC
+			     opt_type_qualifier_list assignment_expression
+			     RSQUARE { $$ = ast_array_declarator($1, $5); }
+			   | opt_direct_astract_declarator LSQUARE
+			     type_qualifier_list STATIC assignment_expression
+			     RSQUARE { $$ = ast_array_declarator($1, $5); }
+			   | opt_direct_astract_declarator LSQUARE STAR
+			     RSQUARE { $$ = ast_array_declarator($1, NULL); }
+			   | opt_direct_astract_declarator LROUND
+			     opt_parameter_type_list
+			     RROUND { $$ = ast_function_declarator($1, $3); }
 			   ;
 
  // TODO: this is not context free
  // typedef_name : identifier { $$ = $1; } ;
 
 initializer : assignment_expression { $$ = $1; }
-	    | LCURLY initializer_list comma_opt RCURLY {
+	    | LCURLY initializer_list opt_comma RCURLY {
 	$$ = ast_alloc((struct ast_node){
 		.kind = AST_INITIALIZER,
 		.initializer = { .list = $2 }
@@ -621,9 +644,7 @@ selection_statement : IF LROUND expression RROUND statement {
 	}); }
 		    ;
 
-opt_expression : { $$ = NULL; }
-	       | expression { $$ = $1; }
-	       ;
+opt_expression : { $$ = NULL; } | expression { $$ = $1; } ;
 iteration_statement : WHILE LROUND expression RROUND statement {
 	$$ = ast_alloc((struct ast_node){
 		.kind = AST_STMT_WHILE,

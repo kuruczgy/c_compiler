@@ -103,6 +103,36 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		ast_fprint(f, n->unary.a, ind);
 		fprintf(f, ")");
 		break;
+	case AST_COMPOUND_LITERAL:
+		fprintf(f, "(");
+		ast_fprint(f, n->compound_literal.type_name, ind);
+		fprintf(f, "){\n");
+		v = &n->compound_literal.list;
+		for (int i = 0; i < v->len; ++i) {
+			const struct ast_node * const *ni = vec_get_c(v, i);
+			indent(f, ind + 1);
+			ast_fprint(f, *ni, ind + 1);
+			fprintf(f, ",\n");
+		}
+		indent(f, ind);
+		fprintf(f, "}");
+		break;
+	case AST_SIZEOF_EXPR:
+		fprintf(f, "sizeof(");
+		ast_fprint(f, n->sizeof_expr.type_name, ind);
+		fprintf(f, ")");
+		break;
+	case AST_ALIGNOF_EXPR:
+		fprintf(f, "alignof(");
+		ast_fprint(f, n->alignof_expr.type_name, ind);
+		fprintf(f, ")");
+		break;
+	case AST_CAST:
+		fprintf(f, "(");
+		ast_fprint(f, n->cast.type_name, ind);
+		fprintf(f, ")");
+		ast_fprint(f, n->cast.expr, ind);
+		break;
 	case AST_BIN:
 		fprintf(f, "(");
 		ast_fprint(f, n->bin.a, ind);
@@ -243,7 +273,9 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		for (int i = 0; i < n->declarator.pointer; ++i) {
 			fprintf(f, "*");
 		}
-		ast_fprint(f, n->declarator.direct_declarator, ind);
+		if (n->declarator.direct_declarator) {
+			ast_fprint(f, n->declarator.direct_declarator, ind);
+		}
 		break;
 	case AST_DECLARATION_SPECIFIERS:
 		v = &n->declaration_specifiers.storage_class_specifiers;
@@ -300,7 +332,9 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		fprintf(f, ")");
 		break;
 	case AST_ARRAY_DECLARATOR:
-		ast_fprint(f, n->array_declarator.direct_declarator, ind);
+		if (n->array_declarator.direct_declarator) {
+			ast_fprint(f, n->array_declarator.direct_declarator, ind);
+		}
 		fprintf(f, "[");
 		if (n->array_declarator.size) {
 			ast_fprint(f, n->array_declarator.size, ind);
@@ -308,7 +342,9 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		fprintf(f, "]");
 		break;
 	case AST_FUNCTION_DECLARATOR:
-		ast_fprint(f, n->function_declarator.direct_declarator, ind);
+		if (n->function_declarator.direct_declarator) {
+			ast_fprint(f, n->function_declarator.direct_declarator, ind);
+		}
 		fprintf(f, "(");
 		v = &n->function_declarator.parameter_type_list;
 		for (int i = 0; i < v->len; ++i) {
@@ -447,6 +483,14 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		}
 		ast_fprint(f, n->initializer_list_item.initializer, ind);
 		break;
+	case AST_TYPE_NAME:
+		if (n->type_name.specifier_qualifier_list) {
+			ast_fprint(f, n->type_name.specifier_qualifier_list, ind);
+			fprintf(f, " ");
+		}
+		if (n->type_name.declarator) {
+			ast_fprint(f, n->type_name.declarator, ind);
+		}
 	}
 }
 struct ast_node *ast_ident(const char *ident) {

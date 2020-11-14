@@ -14,6 +14,10 @@ enum ast_kind {
 	AST_MEMBER,
 	AST_MEMBER_DEREF,
 	AST_UNARY,
+	AST_COMPOUND_LITERAL,
+	AST_SIZEOF_EXPR,
+	AST_ALIGNOF_EXPR,
+	AST_CAST,
 	AST_BIN,
 	AST_CONDITIONAL,
 	AST_STMT_LABELED,
@@ -55,6 +59,7 @@ enum ast_kind {
 	AST_DESIGNATION,
 	AST_INITIALIZER,
 	AST_INITIALIZER_LIST_ITEM,
+	AST_TYPE_NAME,
 };
 
 enum ast_unary_kind {
@@ -142,6 +147,16 @@ struct ast_node {
 		} index;
 		struct { struct ast_node *a; char *ident; } member;
 		struct { struct ast_node *a; enum ast_unary_kind kind; } unary;
+		struct {
+			struct ast_node *type_name;
+			struct vec list; /* vec<struct ast_node *> */
+		} compound_literal;
+		struct { struct ast_node *type_name; } sizeof_expr;
+		struct { struct ast_node *type_name; } alignof_expr;
+		struct {
+			struct ast_node *type_name;
+			struct ast_node *expr;
+		} cast;
 		struct { struct ast_node *a, *b; enum ast_bin_kind kind; } bin;
 		struct {
 			struct ast_node *cond;
@@ -241,6 +256,10 @@ struct ast_node {
 			struct ast_node *designation;
 			struct ast_node *initializer;
 		} initializer_list_item;
+		struct {
+			struct ast_node *specifier_qualifier_list;
+			struct ast_node *declarator;
+		} type_name;
 	};
 };
 
