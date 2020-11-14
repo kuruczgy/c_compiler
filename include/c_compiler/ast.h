@@ -47,6 +47,14 @@ enum ast_kind {
 	AST_SU_SPECIFIER_INCOMPLETE,
 	AST_STRUCT_DECLARATION,
 	AST_STRUCT_DECLARATOR,
+	AST_ENUM_SPECIFIER,
+	AST_ENUM_SPECIFIER_INCOMPLETE,
+	AST_ENUMERATOR,
+	AST_DESIGNATOR_INDEX,
+	AST_DESIGNATOR_IDENT,
+	AST_DESIGNATION,
+	AST_INITIALIZER,
+	AST_INITIALIZER_LIST_ITEM,
 };
 
 enum ast_unary_kind {
@@ -213,6 +221,26 @@ struct ast_node {
 			struct ast_node *declarator;
 			struct ast_node *bitfield_expr;
 		} struct_declarator;
+		struct {
+			struct ast_node *ident;
+			struct vec enumerators; /* vec<struct ast_node *> */
+		} enum_specifier;
+		struct {
+			struct ast_node *ident;
+		} enum_specifier_incomplete;
+		struct {
+			struct ast_node *ident, *expr;
+		} enumerator;
+		struct ast_node *designator_index;
+		struct ast_node *designator_ident;
+		struct vec designation; /* vec<struct ast_node *> */
+		struct {
+			struct vec list; /* vec<struct ast_node *> */
+		} initializer;
+		struct {
+			struct ast_node *designation;
+			struct ast_node *initializer;
+		} initializer_list_item;
 	};
 };
 

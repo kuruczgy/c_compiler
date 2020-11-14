@@ -72,9 +72,9 @@ int main(int argc, char *argv[])
 %token LT GT LEQ GEQ EQB NEQ XOR OR ANDB ORB QMARK COLON SEMI ELLIPSIS EQ
 %token COMMA
 
-%type <n> identifier string_literal
+%type <n> identifier string_literal enumeration_constant
 %type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression constant_expression
-%type <n> declaration struct_or_union_specifier specifier_qualifier_list struct_declarator enum_specifier enumerator_list enumerator alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator initializer_list designation designator_list designator static_assertion_declaration
+%type <n> declaration struct_or_union_specifier specifier_qualifier_list struct_declarator enum_specifier enumerator alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator direct_abstract_declarator designation designator static_assertion_declaration opt_designation initializer_list_item
 %type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement opt_expression
 %type <n> translation_unit external_declaration function_definition
 
@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 %type <integer> pointer
 
 %type <n> init_declarator initializer parameter_declaration struct_declaration
-%type <list> init_declarator_list parameter_type_list parameter_list struct_declaration_list struct_declarator_list
+%type <list> init_declarator_list parameter_type_list parameter_list struct_declaration_list struct_declarator_list enumerator_list designator_list initializer_list
 
 %type <storage_class_specifier> storage_class_specifier
 %type <builtin_type> builtin_type
@@ -96,15 +96,20 @@ int main(int argc, char *argv[])
 
 %type <n> declaration_specifiers
 
+%type <n> identifier_opt
+
 %start start
 
 %%
 
 start : translation_unit { *res = $1; } ;
 
+comma_opt : | COMMA ;
+identifier_opt : { $$ = NULL; } | identifier { $$ = $1; } ;
+
 string_literal : STRING { $$ = ast_string(lex_ident); } ;
 identifier : IDENT { $$ = ast_ident(lex_ident); } ;
-enumeration_constant : identifier ;
+enumeration_constant : identifier { $$ = $1; } ;
 
  /* A.2.1 EXPRESSIONS */
 
@@ -125,7 +130,6 @@ generic_association : type_name COLON assignment_expression
 		    | DEFAULT COLON assignment_expression
 		    ; */
 
-comma_opt : | COMMA ;
 postfix_expression : primary_expression { $$ = $1; }
 		   | postfix_expression LSQUARE expression RSQUARE { $$ = ast_index($1, $3); }
 		   | postfix_expression LROUND RROUND { $$ = ast_call($1, vec_new_empty(sizeof(struct ast_node *))); }
@@ -283,7 +287,7 @@ builtin_type : VOID { $$ = AST_BUILTIN_TYPE_VOID; }
 type_specifier : builtin_type { $$ = ast_builtin_type($1); }
 	       // | atomic_type_specifier // TODO: this is not context free
 	       | struct_or_union_specifier
-	       // | enum_specifier
+	       | enum_specifier
 	       // | typedef_name { $$ = $1; } // TODO: this is not context free
 	       ;
 
@@ -367,19 +371,34 @@ struct_declarator : declarator {
 	}); }
 		  ;
 
-enum_specifier : ENUM LCURLY enumerator_list RCURLY
-	       | ENUM identifier LCURLY enumerator_list RCURLY
-	       | ENUM LCURLY enumerator_list COMMA RCURLY
-	       | ENUM identifier LCURLY enumerator_list COMMA RCURLY
-	       | ENUM identifier
+enum_specifier : ENUM identifier_opt LCURLY enumerator_list comma_opt RCURLY {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_ENUM_SPECIFIER,
+		.enum_specifier = { .ident = $2, .enumerators = $4 }
+	}); }
+	       | ENUM identifier {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_ENUM_SPECIFIER_INCOMPLETE,
+		.enum_specifier_incomplete = { .ident = $2 }
+	}); }
 	       ;
 
-enumerator_list : enumerator
-		| enumerator_list COMMA enumerator
+enumerator_list : enumerator { $$ = ast_list($1); }
+		| enumerator_list COMMA enumerator {
+	vec_append(&($1), &($3));
+	$$ = $1; }
 		;
 
-enumerator : enumeration_constant
-	   | enumeration_constant EQ constant_expression
+enumerator : enumeration_constant {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_ENUMERATOR,
+		.enumerator = { .ident = $1 }
+	}); }
+	   | enumeration_constant EQ constant_expression {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_ENUMERATOR,
+		.enumerator = { .ident = $1, .expr = $3 }
+	}); }
 	   ;
 
  // TODO: this is not context free
@@ -491,24 +510,52 @@ direct_abstract_declarator : LROUND abstract_declarator RROUND
  // typedef_name : identifier { $$ = $1; } ;
 
 initializer : assignment_expression { $$ = $1; }
-	    // | LCURLY initializer_list RCURLY
-	    // | LCURLY initializer_list COMMA RCURLY
+	    | LCURLY initializer_list comma_opt RCURLY {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_INITIALIZER,
+		.initializer = { .list = $2 }
+	}); }
 	    ;
 
-opt_designation : | designation ;
-initializer_list : opt_designation initializer
-		 | initializer_list COMMA opt_designation initializer
+opt_designation : { $$ = NULL; } | designation { $$ = $1; };
+initializer_list_item : opt_designation initializer {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_INITIALIZER_LIST_ITEM,
+		.initializer_list_item = {
+			.designation = $1,
+			.initializer = $2,
+		}
+	}); }
+		      ;
+initializer_list : initializer_list_item { $$ = ast_list($1); }
+		 | initializer_list COMMA initializer_list_item {
+	vec_append(&($1), &($3));
+	$$ = $1; }
 		 ;
 
-designation : designator_list EQ
+designation : designator_list EQ {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_DESIGNATION,
+		.designation = $1
+	}); }
 	    ;
 
-designator_list : designator
-		| designator_list designator
+designator_list : designator { $$ = ast_list($1); }
+		| designator_list designator {
+	vec_append(&($1), &($2));
+	$$ = $1; }
 		;
 
-designator : LSQUARE constant_expression RSQUARE
-	   | DOT identifier
+designator : LSQUARE constant_expression RSQUARE {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_DESIGNATOR_INDEX,
+		.designator_index = $2
+	}); }
+	   | DOT identifier {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_DESIGNATOR_IDENT,
+		.designator_ident = $2
+	}); }
 	   ;
 
 static_assertion_declaration : U_STATIC_ASSERT LROUND constant_expression COMMA string_literal RROUND SEMI

@@ -384,6 +384,69 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 			ast_fprint(f, n->struct_declarator.bitfield_expr, ind);
 		}
 		break;
+	case AST_ENUM_SPECIFIER:
+		fprintf(f, "enum ");
+		if (n->enum_specifier.ident) {
+			ast_fprint(f, n->enum_specifier.ident, ind);
+			fprintf(f, " ");
+		}
+		fprintf(f, "{\n");
+		v = &n->enum_specifier.enumerators;
+		for (int i = 0; i < v->len; ++i) {
+			const struct ast_node * const *ni = vec_get_c(v, i);
+			indent(f, ind + 1);
+			ast_fprint(f, *ni, ind + 1);
+			fprintf(f, ",\n");
+		}
+		indent(f, ind);
+		fprintf(f, "}");
+		break;
+	case AST_ENUM_SPECIFIER_INCOMPLETE:
+		fprintf(f, "enum ");
+		ast_fprint(f, n->enum_specifier_incomplete.ident, ind);
+		break;
+	case AST_ENUMERATOR:
+		ast_fprint(f, n->enumerator.ident, ind);
+		if (n->enumerator.expr) {
+			fprintf(f, " = ");
+			ast_fprint(f, n->enumerator.expr, ind);
+		}
+		break;
+	case AST_DESIGNATOR_INDEX:
+		fprintf(f, "[");
+		ast_fprint(f, n->designator_index, ind);
+		fprintf(f, "]");
+		break;
+	case AST_DESIGNATOR_IDENT:
+		fprintf(f, ".");
+		ast_fprint(f, n->designator_ident, ind);
+		break;
+	case AST_DESIGNATION:
+		v = &n->designation;
+		for (int i = 0; i < v->len; ++i) {
+			const struct ast_node * const *ni = vec_get_c(v, i);
+			ast_fprint(f, *ni, ind);
+		}
+		fprintf(f, " = ");
+		break;
+	case AST_INITIALIZER:
+		fprintf(f, "{\n");
+		v = &n->initializer.list;
+		for (int i = 0; i < v->len; ++i) {
+			const struct ast_node * const *ni = vec_get_c(v, i);
+			indent(f, ind + 1);
+			ast_fprint(f, *ni, ind + 1);
+			fprintf(f, ",\n");
+		}
+		indent(f, ind);
+		fprintf(f, "}");
+		break;
+	case AST_INITIALIZER_LIST_ITEM:
+		if (n->initializer_list_item.designation) {
+			ast_fprint(f, n->initializer_list_item.designation, ind);
+		}
+		ast_fprint(f, n->initializer_list_item.initializer, ind);
+		break;
 	}
 }
 struct ast_node *ast_ident(const char *ident) {
