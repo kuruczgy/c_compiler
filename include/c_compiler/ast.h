@@ -60,6 +60,7 @@ enum ast_kind {
 	AST_INITIALIZER,
 	AST_INITIALIZER_LIST_ITEM,
 	AST_TYPE_NAME,
+	AST_STATIC_ASSERT,
 };
 
 enum ast_unary_kind {
@@ -260,6 +261,9 @@ struct ast_node {
 			struct ast_node *specifier_qualifier_list;
 			struct ast_node *declarator;
 		} type_name;
+		struct {
+			struct ast_node *cond, *message;
+		} static_assert;
 	};
 };
 

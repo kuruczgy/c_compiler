@@ -491,6 +491,14 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		if (n->type_name.declarator) {
 			ast_fprint(f, n->type_name.declarator, ind);
 		}
+		break;
+	case AST_STATIC_ASSERT:
+		fprintf(f, "_Static_assert(");
+		ast_fprint(f, n->static_assert.cond, ind);
+		fprintf(f, ", ");
+		ast_fprint(f, n->static_assert.message, ind);
+		fprintf(f, ");");
+		break;
 	}
 }
 struct ast_node *ast_ident(const char *ident) {

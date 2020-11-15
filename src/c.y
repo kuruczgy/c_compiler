@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 
 %type <n> identifier string_literal enumeration_constant
 %type <n> start primary_expression postfix_expression unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression equality_expression and_expression xor_expression or_expression andb_expression orb_expression conditional_expression assignment_expression expression constant_expression opt_assignment_expression
-%type <n> declaration struct_or_union_specifier specifier_qualifier_list struct_declarator enum_specifier enumerator alignment_specifier type_qualifier_list identifier_list type_name abstract_declarator opt_abstract_declarator direct_abstract_declarator  opt_direct_astract_declarator designation designator static_assertion_declaration opt_designation initializer_list_item
+%type <n> declaration struct_or_union_specifier specifier_qualifier_list struct_declarator enum_specifier enumerator alignment_specifier type_name abstract_declarator opt_abstract_declarator direct_abstract_declarator  opt_direct_astract_declarator designation designator static_assertion_declaration opt_designation initializer_list_item
 %type <n> statement labeled_statement compound_statement block_item_list block_item expression_statement selection_statement iteration_statement jump_statement opt_expression
 %type <n> translation_unit external_declaration function_definition
 
@@ -267,7 +267,7 @@ constant_expression : conditional_expression
 
 declaration : declaration_specifiers SEMI { $$ = ast_declaration($1, vec_new_empty(sizeof(struct ast_node *))); }
 	    | declaration_specifiers init_declarator_list SEMI { $$ = ast_declaration($1, $2); }
-	    | static_assertion_declaration
+	    | static_assertion_declaration { $$ = $1; }
 	    ;
 
 declaration_specifiers : storage_class_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.storage_class_specifiers, &($1)); }
@@ -489,12 +489,12 @@ parameter_list : parameter_declaration { $$ = ast_list($1); }
 
 parameter_declaration : declaration_specifiers declarator { $$ = ast_parameter_declaration($2, $1); }
 		      | declaration_specifiers { $$ = ast_parameter_declaration(NULL, $1); }
-		      // | declaration_specifiers abstract_declarator
+		      | declaration_specifiers abstract_declarator { $$ = ast_parameter_declaration($2, $1); }
 		      ;
 
-identifier_list : identifier
+ /* identifier_list : identifier
 		| identifier_list COMMA identifier
-		;
+		; */
 
 type_name : specifier_qualifier_list opt_abstract_declarator {
 	$$ = ast_alloc((struct ast_node){
@@ -581,7 +581,12 @@ designator : LSQUARE constant_expression RSQUARE {
 	}); }
 	   ;
 
-static_assertion_declaration : U_STATIC_ASSERT LROUND constant_expression COMMA string_literal RROUND SEMI
+static_assertion_declaration : U_STATIC_ASSERT LROUND constant_expression
+			       COMMA string_literal RROUND SEMI {
+	$$ = ast_alloc((struct ast_node){
+		.kind = AST_STATIC_ASSERT,
+		.static_assert = { .cond = $3, .message = $5 }
+	}); }
 			     ;
 
  /* A.2.3 STATEMENTS */
