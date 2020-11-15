@@ -16,7 +16,7 @@ extern FILE *yyin;
 void yyerror(struct ast_node **res, const char *str)
 {
 	(void)res;
-	fprintf(stderr, "error: %s\n", str);
+	fprintf(stderr, "error: %s; line: %d\n", str, yylloc.first_line);
 }
 
 int yywrap()
@@ -41,6 +41,9 @@ int main(int argc, char *argv[])
 	}
 }
 %}
+
+%locations
+%define parse.error verbose
 
 %parse-param {struct ast_node **res}
 

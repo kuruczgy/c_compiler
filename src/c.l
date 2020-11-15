@@ -7,7 +7,14 @@
 extern const char *lex_ident;
 extern long long int lex_int;
 
+#define YY_USER_ACTION { \
+	yylloc.first_line = yylineno; \
+        yylloc.last_line = yylineno; \
+}
+
 %}
+
+%option yylineno
 
 digit [0-9]
 nondigit [a-zA-Z_]
