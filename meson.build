@@ -27,31 +27,32 @@ pfiles = pgen.process('src/c.y')
 c_compiler = executable(
   'c_compiler',
   'src/ast.c',
+  'src/cg.c',
   lfiles, pfiles,
   dependencies : [ ds_vec_dep, ds_hashmap_dep ],
   include_directories : incdir
 )
 
-# comp_asm = generator(c_compiler,
-#   output : [ '@BASENAME@.s' ],
-#   arguments : [ 'asm', '@INPUT@' ],
-#   capture : true
-# )
-# 
-# test_s = comp_asm.process('compiler_test.c')
-# test_o = custom_target(
-#   'test_o',
-#   input : test_s,
-#   output : [ '@BASENAME@.o' ],
-#   command : [ nasm, '-f', 'elf64', '-o', '@OUTPUT@', '@INPUT@' ]
-# )
-# test_e = custom_target(
-#   'test_e',
-#   input : test_o,
-#   output : [ '@BASENAME@' ],
-#   command : [ gcc, '-static', '@INPUT@', '-o', '@OUTPUT@' ],
-#   build_by_default : true
-# )
+comp_asm = generator(c_compiler,
+  output : [ '@BASENAME@.s' ],
+  arguments : [ 'asm', '@INPUT@' ],
+  capture : true
+)
+
+test_s = comp_asm.process('test/compiler_test.c')
+test_o = custom_target(
+  'test_o',
+  input : test_s,
+  output : [ '@BASENAME@.o' ],
+  command : [ nasm, '-f', 'elf64', '-o', '@OUTPUT@', '@INPUT@' ]
+)
+test_e = custom_target(
+  'test_e',
+  input : test_o,
+  output : [ '@BASENAME@' ],
+  command : [ gcc, '-static', '@INPUT@', '-o', '@OUTPUT@' ],
+  build_by_default : true
+)
 
 # a bit ugly because LaTeX needs to be compiled twice, but does the job...
 prog_pdflatex = find_program('pdflatex', required: false)

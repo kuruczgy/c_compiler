@@ -3,6 +3,11 @@
 #include <stdio.h>
 #include <c_compiler/cg.h>
 
+#define GETI(x, i) *(struct ast_node * const *)vec_get_c(&(x), i)
+#define FOR_EACH_NODE(x) \
+	const struct ast_node *ni = GETI(x, 0); \
+	for (int i = 0; ni; ni = ((++i < (x).len) ? GETI(x, i): NULL))
+
 struct state {
 	struct hashmap vars; /* hashmap<int> */
 	int sp; /* stack pointer */
@@ -234,66 +239,112 @@ static val cg_gen_expr(struct state *s, const struct ast_node *n) {
 	case AST_MEMBER_DEREF:
 		// TODO
 		break;
-	case AST_UNARY: return cg_gen_unary(s, n);
-	case AST_BIN: return cg_gen_bin(s, n);
+	case AST_UNARY:
+		return cg_gen_unary(s, n);
+	case AST_COMPOUND_LITERAL:
+		// TODO;
+		break;
+	case AST_SIZEOF_EXPR:
+		// TODO
+		break;
+	case AST_ALIGNOF_EXPR:
+		// TODO
+		break;
+	case AST_CAST:
+		// TODO
+		break;
+	case AST_BIN:
+		return cg_gen_bin(s, n);
+		// TODO
+		break;
+	case AST_CONDITIONAL:
+		// TODO
+		break;
 	default: // TODO: we shouldn't be here
 		break;
 	}
 	return (val){ .s = 3 };
 }
 
-static void cg_gen_stmt_comp(struct state *s, const struct ast_node *n) {
-	for (int i = 0; i < n->stmt_comp.len; ++i) {
-		const struct ast_node *ni =
-			*(struct ast_node * const *)vec_get_c(&n->stmt_comp, i);
-		// fprintf(s->f, "; ");
-		// ast_fprint(s->f, ni, 0);
-		switch (ni->kind) {
-		case AST_DECL: ;
-			struct ast_node *name = ni->decl.t.ident;
-			struct ast_type t = ni->decl.t;
-			if (name->kind == AST_IDENT) {
-				// TODO: type. now we assume literally EVERY type is 64 bit...
-				int size = 8, array;
-				if (t.array && (const_eval(t.array, &array) == 0)) {
-					size *= array;
-				}
-				s->sp -= size;
-				hashmap_put(&s->vars, name->ident, &s->sp);
-			} else {
-				// TODO: we shouldn't be here
-			}
-			break;
-		case AST_STMT_EXPR:
-			cg_gen_expr(s, ni->stmt_expr.a);
-			break;
-		case AST_STMT_WHILE: ;
-			int label_start = get_label(s), label_end = get_label(s);
-			put_label(s, label_start);
-			val val_a = cg_gen_expr(s, ni->stmt_while.a);
-			val_read(s, &val_a, "rax");
-			fprintf(s->f, "cmp rax, 0\n");
-			fprintf(s->f, "je label_%d\n", label_end);
-			if (ni->stmt_while.b->kind == AST_STMT_COMP)
-				cg_gen_stmt_comp(s, ni->stmt_while.b);
-			fprintf(s->f, "jmp label_%d\n", label_start);
-			put_label(s, label_end);
-			break;
-		case AST_STMT_IF: {
-			int label_end = get_label(s);
-			val val_a = cg_gen_expr(s, ni->stmt_if.a);
-			val_read(s, &val_a, "rax");
-			fprintf(s->f, "cmp rax, 0\n");
-			fprintf(s->f, "je label_%d\n", label_end);
-			if (ni->stmt_if.b->kind == AST_STMT_COMP)
-				cg_gen_stmt_comp(s, ni->stmt_if.b);
-			put_label(s, label_end);
-			break;
-		}
-		default: ;
-			// TODO: we shouldn't be here
+static void cg_gen_declaration(struct state *s, const struct ast_node *n) {
+	FOR_EACH_NODE(n->declaration.init_declarator_list) {
+		const struct ast_node
+			*d = ni->init_declarator.declarator,
+			*dd = d->declarator.direct_declarator;
+		if (dd->kind == AST_IDENT) {
+			// TODO: type. now we assume literally EVERY type is 64 bit...
+			int size = 8;
+			s->sp -= size;
+			hashmap_put(&s->vars, dd->ident, &s->sp);
 		}
 	}
+}
+
+static void cg_gen_stmt_comp(struct state *s, const struct ast_node *n);
+
+static void cg_gen_stmt(struct state *s, const struct ast_node *n) {
+	switch (n->kind) {
+	case AST_STMT_EXPR:
+		cg_gen_expr(s, n->stmt_expr.a);
+		break;
+	case AST_STMT_WHILE: ;
+		int label_start = get_label(s), label_end = get_label(s);
+		put_label(s, label_start);
+		val val_cond = cg_gen_expr(s, n->stmt_while.cond);
+		val_read(s, &val_cond, "rax");
+		fprintf(s->f, "cmp rax, 0\n");
+		fprintf(s->f, "je label_%d\n", label_end);
+		cg_gen_stmt(s, n->stmt_while.stmt);
+		fprintf(s->f, "jmp label_%d\n", label_start);
+		put_label(s, label_end);
+		break;
+	case AST_STMT_IF: {
+		int label_end = get_label(s);
+		val val_cond = cg_gen_expr(s, n->stmt_if.cond);
+		val_read(s, &val_cond, "rax");
+		fprintf(s->f, "cmp rax, 0\n");
+		fprintf(s->f, "je label_%d\n", label_end);
+		cg_gen_stmt(s, n->stmt_if.stmt);
+		// TODO: else
+		put_label(s, label_end);
+		break;
+	case AST_STMT_COMP:
+		cg_gen_stmt_comp(s, n);
+		break;
+	}
+	default: ;
+		// TODO: we shouldn't be here
+	}
+}
+
+static void cg_gen_stmt_comp(struct state *s, const struct ast_node *n) {
+	FOR_EACH_NODE(n->stmt_comp) {
+		if (ni->kind == AST_DECLARATION) {
+			cg_gen_declaration(s, ni);
+		} else {
+			cg_gen_stmt(s, ni);
+		}
+	}
+}
+
+static void cg_gen_function_definition(struct state *s, const struct ast_node *n) {
+	const struct ast_node
+		*d = n->function_definition.declarator,
+		*dd = d->declarator.direct_declarator;
+	if (dd->kind != AST_FUNCTION_DECLARATOR) return;
+	const struct ast_node
+		*i = dd->function_declarator.direct_declarator;
+	if (i->kind != AST_IDENT) return;
+
+	fprintf(s->f, "%s:\n", i->ident);
+	fprintf(s->f, "push rbp\n");
+	fprintf(s->f, "mov rbp, rsp\n");
+	cg_gen_stmt_comp(s, n->function_definition.compound_statement);
+	fprintf(s->f, "mov rsp, rbp\n");
+	fprintf(s->f, "pop rbp\n");
+	fprintf(s->f, "mov rax, 0\n");
+	fprintf(s->f, "ret\n");
+	fprintf(s->f, "\n");
 }
 
 void cg_gen(const struct ast_node *n) {
@@ -308,18 +359,18 @@ void cg_gen(const struct ast_node *n) {
 	fprintf(s->f, "extern malloc\n");
 	fprintf(s->f, "extern free\n");
 	fprintf(s->f, "extern getchar\n");
-	fprintf(s->f, "main:\n");
-	fprintf(s->f, "push rbp\n");
-	fprintf(s->f, "mov rbp, rsp\n");
 
-	if (n->kind == AST_STMT_COMP) {
-		cg_gen_stmt_comp(s, n);
+	if (n->kind == AST_TRANSLATION_UNIT) {
+		for (int i = 0; i < n->translation_unit.len; ++i) {
+			const struct ast_node *ni = *(struct ast_node * const *)
+				vec_get_c(&n->translation_unit, i);
+			if (ni->kind == AST_DECLARATION) {
+				// TODO
+			} else if (ni->kind == AST_FUNCTION_DEFINITION) {
+				cg_gen_function_definition(s, ni);
+			}
+		}
 	}
-
-	fprintf(s->f, "mov rsp, rbp\n");
-	fprintf(s->f, "pop rbp\n");
-	fprintf(s->f, "mov rax, 0\n");
-	fprintf(s->f, "ret\n");
 
 	fprintf(s->f, "section .rodata\n");
 	for (int i = 0; i < s->strings.len; ++i) {
