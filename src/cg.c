@@ -245,7 +245,8 @@ static val cg_gen_expr(struct state *s, const struct ast_node *n) {
 		// TODO;
 		break;
 	case AST_SIZEOF_EXPR:
-		// TODO
+		fprintf(s->f, "mov rax, %lld\n", 8LL); // TODO: types
+		return val_push_new(s, "rax");
 		break;
 	case AST_ALIGNOF_EXPR:
 		// TODO

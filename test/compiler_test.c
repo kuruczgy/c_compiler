@@ -15,32 +15,32 @@ int main() {
 		if (c == '[') {
 			// push onto stack
 			*(stack + sp) = pc;
-			sp = sp + 8;
+			sp = sp + sizeof(int);
 		}
 		if (c == ']') {
 			// pop from stack
-			sp = sp - 8;
+			sp = sp - sizeof(int);
 			int jmp_pc;
 			jmp_pc = *(stack + sp);
 			*(jumps + pc) = jmp_pc;
 			*(jumps + jmp_pc) = pc;
 		}
 
-		pc = pc + 8;
+		pc = pc + sizeof(int);
 	}
-	*(program + pc + 8) = 0;
+	*(program + pc + sizeof(int)) = 0;
 
 	int i = 0;
 	while (i < 65536) {
 		*(stack + i) = 0;
-		i = i + 8;
+		i = i + sizeof(int);
 	}
 
 	int ptr = 0;
 	pc = 0;
 	while (c = *(program + pc)) {
-		if (c == '>') { ptr = ptr + 8; }
-		if (c == '<') { ptr = ptr - 8; }
+		if (c == '>') { ptr = ptr + sizeof(int); }
+		if (c == '<') { ptr = ptr - sizeof(int); }
 		if (c == '+') { ++*(stack + ptr); }
 		if (c == '-') { --*(stack + ptr); }
 		if (c == '.') { printf("%c", *(stack + ptr)); }
