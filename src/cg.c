@@ -275,7 +275,14 @@ static void cg_gen_declaration(struct state *s, const struct ast_node *n) {
 			// TODO: type. now we assume literally EVERY type is 64 bit...
 			int size = 8;
 			s->sp -= size;
-			hashmap_put(&s->vars, dd->ident, &s->sp);
+			int loc = s->sp;
+			hashmap_put(&s->vars, dd->ident, &loc);
+
+			if (ni->init_declarator.initializer) {
+				val val_init = cg_gen_expr(s, ni->init_declarator.initializer);
+				val_read(s, &val_init, "rax");
+				val_store(s, &(val){ .s = loc }, "rax");
+			}
 		}
 	}
 }
