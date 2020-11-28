@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <c_compiler/ast.h>
+
+char *strdup(const char *s) {
+	size_t len = strlen(s);
+	char *res = malloc(len + 1);
+	memcpy(res, s, len + 1);
+	return res;
+}
 
 static const char *unary_op[] = {
 	[AST_PRE_INCR] = "++",
@@ -278,23 +287,23 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		}
 		break;
 	case AST_DECLARATION_SPECIFIERS:
-		v = &n->declaration_specifiers.storage_class_specifiers;
-		for (int i = 0; i < v->len; ++i) {
-			const enum ast_storage_class_specifier *ei = vec_get_c(v, i);
-			fprintf(f, "%s", storage_class_specifier[*ei]);
-			fprintf(f, " ");
+		for (int i = 0; i < AST_STORAGE_CLASS_SPECIFIER_N; ++i) {
+			for (int k = 0; k < n->declaration_specifiers.storage_class_specifiers[i]; ++k) {
+				fprintf(f, "%s", storage_class_specifier[i]);
+				fprintf(f, " ");
+			}
 		}
-		v = &n->declaration_specifiers.type_qualifiers;
-		for (int i = 0; i < v->len; ++i) {
-			const enum ast_type_qualifier *ei = vec_get_c(v, i);
-			fprintf(f, "%s", type_qualifier[*ei]);
-			fprintf(f, " ");
+		for (int i = 0; i < AST_TYPE_QUALIFIER_N; ++i) {
+			for (int k = 0; k < n->declaration_specifiers.type_qualifiers[i]; ++k) {
+				fprintf(f, "%s", type_qualifier[i]);
+				fprintf(f, " ");
+			}
 		}
-		v = &n->declaration_specifiers.function_specifiers;
-		for (int i = 0; i < v->len; ++i) {
-			const enum ast_function_specifier *ei = vec_get_c(v, i);
-			fprintf(f, "%s", function_specifier[*ei]);
-			fprintf(f, " ");
+		for (int i = 0; i < AST_FUNCTION_SPECIFIER_N; ++i) {
+			for (int k = 0; k < n->declaration_specifiers.function_specifiers[i]; ++k) {
+				fprintf(f, "%s", function_specifier[i]);
+				fprintf(f, " ");
+			}
 		}
 		v = &n->declaration_specifiers.alignment_specifiers;
 		for (int i = 0; i < v->len; ++i) {
@@ -310,11 +319,11 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		}
 		break;
 	case AST_SPECIFIER_QUALIFIER_LIST:
-		v = &n->specifier_qualifier_list.type_qualifiers;
-		for (int i = 0; i < v->len; ++i) {
-			const enum ast_type_qualifier *ei = vec_get_c(v, i);
-			fprintf(f, "%s", type_qualifier[*ei]);
-			fprintf(f, " ");
+		for (int i = 0; i < AST_TYPE_QUALIFIER_N; ++i) {
+			for (int k = 0; k < n->specifier_qualifier_list.type_qualifiers[i]; ++k) {
+				fprintf(f, "%s", type_qualifier[i]);
+				fprintf(f, " ");
+			}
 		}
 		v = &n->specifier_qualifier_list.type_specifiers;
 		for (int i = 0; i < v->len; ++i) {
@@ -494,9 +503,9 @@ void ast_fprint(FILE *f, const struct ast_node *n, int ind) {
 		break;
 	case AST_STATIC_ASSERT:
 		fprintf(f, "_Static_assert(");
-		ast_fprint(f, n->static_assert.cond, ind);
+		ast_fprint(f, n->static_assert_.cond, ind);
 		fprintf(f, ", ");
-		ast_fprint(f, n->static_assert.message, ind);
+		ast_fprint(f, n->static_assert_.message, ind);
 		fprintf(f, ");");
 		break;
 	}
@@ -659,10 +668,10 @@ struct ast_node *ast_declaration_specifiers() {
 	return ast_alloc((struct ast_node){
 		.kind = AST_DECLARATION_SPECIFIERS,
 		.declaration_specifiers = {
-			.storage_class_specifiers = vec_new_empty(sizeof(enum ast_storage_class_specifier)),
+			.storage_class_specifiers = { 0 },
 			.type_specifiers = vec_new_empty(sizeof(struct ast_node *)),
-			.type_qualifiers = vec_new_empty(sizeof(enum ast_type_qualifier)),
-			.function_specifiers = vec_new_empty(sizeof(enum ast_function_specifier)),
+			.type_qualifiers = { 0 },
+			.function_specifiers = { 0 },
 			.alignment_specifiers = vec_new_empty(sizeof(struct ast_node *)),
 		}
 	});
@@ -672,7 +681,7 @@ struct ast_node *ast_specifier_qualifier_list() {
 		.kind = AST_SPECIFIER_QUALIFIER_LIST,
 		.specifier_qualifier_list = {
 			.type_specifiers = vec_new_empty(sizeof(struct ast_node *)),
-			.type_qualifiers = vec_new_empty(sizeof(enum ast_type_qualifier)),
+			.type_qualifiers = { 0 },
 		}
 	});
 }

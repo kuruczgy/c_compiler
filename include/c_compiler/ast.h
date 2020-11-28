@@ -107,6 +107,7 @@ enum ast_storage_class_specifier {
 	AST_STORAGE_CLASS_SPECIFIER_THREAD_LOCAL,
 	AST_STORAGE_CLASS_SPECIFIER_AUTO,
 	AST_STORAGE_CLASS_SPECIFIER_REGISTER,
+	AST_STORAGE_CLASS_SPECIFIER_N,
 };
 enum ast_builtin_type {
 	AST_BUILTIN_TYPE_VOID,
@@ -120,16 +121,19 @@ enum ast_builtin_type {
 	AST_BUILTIN_TYPE_UNSIGNED,
 	AST_BUILTIN_TYPE_BOOL,
 	AST_BUILTIN_TYPE_COMPLEX,
+	AST_BUILTIN_TYPE_N,
 };
 enum ast_type_qualifier {
 	AST_TYPE_QUALIFIER_CONST,
 	AST_TYPE_QUALIFIER_RESTRICT,
 	AST_TYPE_QUALIFIER_VOLATILE,
 	AST_TYPE_QUALIFIER_ATOMIC,
+	AST_TYPE_QUALIFIER_N,
 };
 enum ast_function_specifier {
 	AST_FUNCTION_SPECIFIER_INLINE,
 	AST_FUNCTION_SPECIFIER_NORETURN,
+	AST_FUNCTION_SPECIFIER_N,
 };
 enum ast_su {
 	AST_SU_STRUCT,
@@ -188,15 +192,15 @@ struct ast_node {
 			struct ast_node *direct_declarator;
 		} declarator;
 		struct {
-			struct vec storage_class_specifiers; /* vec<enum ast_storage_class_specifier> */
+			char storage_class_specifiers[AST_STORAGE_CLASS_SPECIFIER_N];
 			struct vec type_specifiers; /* vec<struct ast_node *> */
-			struct vec type_qualifiers; /* vec<enum ast_type_qualifier> */
-			struct vec function_specifiers; /* vec<enum ast_function_specifier> */
+			char type_qualifiers[AST_TYPE_QUALIFIER_N];
+			char function_specifiers[AST_FUNCTION_SPECIFIER_N];
 			struct vec alignment_specifiers; /* vec<struct ast_node *> */
 		} declaration_specifiers;
 		struct {
 			struct vec type_specifiers; /* vec<struct ast_node *> */
-			struct vec type_qualifiers; /* vec<enum ast_type_qualifier> */
+			char type_qualifiers[AST_TYPE_QUALIFIER_N];
 		} specifier_qualifier_list;
 		enum ast_builtin_type builtin_type;
 		struct {
@@ -263,7 +267,7 @@ struct ast_node {
 		} type_name;
 		struct {
 			struct ast_node *cond, *message;
-		} static_assert;
+		} static_assert_;
 	};
 };
 

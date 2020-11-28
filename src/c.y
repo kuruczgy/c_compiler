@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
 	if (strcmp(argv[1], "ast") == 0) {
 		ast_fprint(stdout, n, 0);
 	} else if (strcmp(argv[1], "asm") == 0) {
-		cg_gen(n);
+		return cg_gen(n);
 	} else {
 		return EXIT_FAILURE;
 	}
@@ -273,14 +273,14 @@ declaration : declaration_specifiers SEMI { $$ = ast_declaration($1, vec_new_emp
 	    | static_assertion_declaration { $$ = $1; }
 	    ;
 
-declaration_specifiers : storage_class_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.storage_class_specifiers, &($1)); }
-		       | storage_class_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.storage_class_specifiers, &($1)); $$ = $2; }
+declaration_specifiers : storage_class_specifier { $$ = ast_declaration_specifiers(); ($$)->declaration_specifiers.storage_class_specifiers[($1)]++; }
+		       | storage_class_specifier declaration_specifiers { ($2)->declaration_specifiers.storage_class_specifiers[($1)]++; $$ = $2; }
 		       | type_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.type_specifiers, &($1)); }
 		       | type_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.type_specifiers, &($1)); $$ = $2; }
-		       | type_qualifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.type_qualifiers, &($1)); }
-		       | type_qualifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.type_qualifiers, &($1)); $$ = $2; }
-		       | function_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.function_specifiers, &($1)); }
-		       | function_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.function_specifiers, &($1)); $$ = $2; }
+		       | type_qualifier { $$ = ast_declaration_specifiers(); ($$)->declaration_specifiers.type_qualifiers[($1)]++; }
+		       | type_qualifier declaration_specifiers { ($2)->declaration_specifiers.type_qualifiers[($1)]++; $$ = $2; }
+		       | function_specifier { $$ = ast_declaration_specifiers(); ($$)->declaration_specifiers.function_specifiers[($1)]++; }
+		       | function_specifier declaration_specifiers { ($2)->declaration_specifiers.function_specifiers[($1)]++; $$ = $2; }
 		       | alignment_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.alignment_specifiers, &($1)); }
 		       | alignment_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.alignment_specifiers, &($1)); $$ = $2; }
 		       ;
@@ -373,7 +373,7 @@ specifier_qualifier_list : type_specifier {
 	vec_append(&($2)->specifier_qualifier_list.type_specifiers, &($1));
 	$$ = $2; }
 			 | type_qualifier specifier_qualifier_list {
-	vec_append(&($2)->specifier_qualifier_list.type_qualifiers, &($1));
+	($2)->declaration_specifiers.type_qualifiers[($1)]++;
 	$$ = $2; }
 			 ;
 
@@ -483,7 +483,7 @@ type_qualifier_list : type_qualifier
 		    ;
 
 parameter_type_list : parameter_list { $$ = $1; }
-		    // | parameter_list COMMA ELLIPSIS
+		    | parameter_list COMMA ELLIPSIS { $$ = $1; } // TODO
 		    ;
 
 parameter_list : parameter_declaration { $$ = ast_list($1); }
@@ -588,7 +588,7 @@ static_assertion_declaration : U_STATIC_ASSERT LROUND constant_expression
 			       COMMA string_literal RROUND SEMI {
 	$$ = ast_alloc((struct ast_node){
 		.kind = AST_STATIC_ASSERT,
-		.static_assert = { .cond = $3, .message = $5 }
+		.static_assert_ = { .cond = $3, .message = $5 }
 	}); }
 			     ;
 

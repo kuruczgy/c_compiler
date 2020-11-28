@@ -1,4 +1,4 @@
-project('c_compiler', 'c')
+project('c_compiler', 'c', default_options : [ 'c_std=c11' ])
 
 incdir = include_directories('include')
 

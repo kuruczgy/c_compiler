@@ -1,3 +1,8 @@
+void *malloc(int size);
+int getchar();
+int printf(const char *format, ...);
+void free(void *ptr);
+
 int main() {
 	// printf("=== compiler_test.c ===%c", 10);
 

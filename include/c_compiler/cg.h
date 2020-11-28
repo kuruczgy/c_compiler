@@ -3,6 +3,6 @@
 #define C_COMPILER_CG_H
 #include <c_compiler/ast.h>
 
-void cg_gen(const struct ast_node *n);
+int cg_gen(const struct ast_node *n);
 
 #endif
