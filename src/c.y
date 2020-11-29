@@ -17,6 +17,7 @@ void yyerror(struct ast_node **res, const char *str)
 {
 	(void)res;
 	fprintf(stderr, "error: %s; line: %d\n", str, yylloc.first_line);
+	exit(1);
 }
 
 int yywrap()
@@ -35,7 +36,7 @@ int main(int argc, char *argv[])
 	if (strcmp(argv[1], "ast") == 0) {
 		ast_fprint(stdout, n, 0);
 	} else if (strcmp(argv[1], "asm") == 0) {
-		return cg_gen(n);
+		// return cg_gen(n);
 	} else {
 		return EXIT_FAILURE;
 	}
@@ -59,6 +60,11 @@ int main(int argc, char *argv[])
 	enum ast_type_qualifier type_qualifier;
 	enum ast_function_specifier function_specifier;
 	enum ast_su struct_or_union;
+	char type_qualifiers[AST_TYPE_QUALIFIER_N];
+	struct {
+		struct ast_node *n;
+		enum ast_builtin_type builtin;
+	} type_specifier;
 }
 
 %token ALIGNOF AUTO BREAK CASE CHAR CONST CONTINUE DEFAULT DO DOUBLE ELSE ENUM
@@ -84,18 +90,18 @@ int main(int argc, char *argv[])
 %type <u> unary_operator
 %type <b> assigment_operator
 %type <argument_expr_list> argument_expression_list
-%type <n> type_specifier
+%type <type_specifier> type_specifier
 %type <n> direct_declarator declarator
-%type <integer> pointer
 
 %type <n> init_declarator initializer parameter_declaration struct_declaration
-%type <list> init_declarator_list parameter_type_list opt_parameter_type_list parameter_list struct_declaration_list struct_declarator_list enumerator_list designator_list initializer_list
+%type <list> init_declarator_list parameter_type_list opt_parameter_type_list parameter_list struct_declaration_list struct_declarator_list enumerator_list designator_list initializer_list pointer
 
 %type <storage_class_specifier> storage_class_specifier
 %type <builtin_type> builtin_type
 %type <type_qualifier> type_qualifier
 %type <function_specifier> function_specifier
 %type <struct_or_union> struct_or_union
+%type <type_qualifiers> type_qualifier_list
 
 %type <n> declaration_specifiers
 
@@ -273,16 +279,35 @@ declaration : declaration_specifiers SEMI { $$ = ast_declaration($1, vec_new_emp
 	    | static_assertion_declaration { $$ = $1; }
 	    ;
 
-declaration_specifiers : storage_class_specifier { $$ = ast_declaration_specifiers(); ($$)->declaration_specifiers.storage_class_specifiers[($1)]++; }
-		       | storage_class_specifier declaration_specifiers { ($2)->declaration_specifiers.storage_class_specifiers[($1)]++; $$ = $2; }
-		       | type_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.type_specifiers, &($1)); }
-		       | type_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.type_specifiers, &($1)); $$ = $2; }
-		       | type_qualifier { $$ = ast_declaration_specifiers(); ($$)->declaration_specifiers.type_qualifiers[($1)]++; }
-		       | type_qualifier declaration_specifiers { ($2)->declaration_specifiers.type_qualifiers[($1)]++; $$ = $2; }
-		       | function_specifier { $$ = ast_declaration_specifiers(); ($$)->declaration_specifiers.function_specifiers[($1)]++; }
-		       | function_specifier declaration_specifiers { ($2)->declaration_specifiers.function_specifiers[($1)]++; $$ = $2; }
-		       | alignment_specifier { $$ = ast_declaration_specifiers(); vec_append(&($$)->declaration_specifiers.alignment_specifiers, &($1)); }
-		       | alignment_specifier declaration_specifiers { vec_append(&($2)->declaration_specifiers.alignment_specifiers, &($1)); $$ = $2; }
+declaration_specifiers : storage_class_specifier {
+	$$ = ast_declaration_specifiers();
+	($$)->declaration_specifiers.storage_class_specifiers[($1)]++; }
+		       | storage_class_specifier declaration_specifiers {
+	($2)->declaration_specifiers.storage_class_specifiers[($1)]++;
+	$$ = $2; }
+		       | type_specifier {
+	$$ = ast_type_specifier(ast_declaration_specifiers(),
+		($1).builtin, ($1).n); }
+		       | type_specifier declaration_specifiers {
+	$$ = ast_type_specifier($2, ($1).builtin, ($1).n); }
+		       | type_qualifier {
+	$$ = ast_declaration_specifiers();
+	($$)->declaration_specifiers.type_qualifiers[($1)]++; }
+		       | type_qualifier declaration_specifiers {
+	($2)->declaration_specifiers.type_qualifiers[($1)]++;
+	$$ = $2; }
+		       | function_specifier {
+	$$ = ast_declaration_specifiers();
+	($$)->declaration_specifiers.function_specifiers[($1)]++; }
+		       | function_specifier declaration_specifiers {
+	($2)->declaration_specifiers.function_specifiers[($1)]++;
+	$$ = $2; }
+		       | alignment_specifier {
+	$$ = ast_declaration_specifiers();
+	vec_append(&($$)->declaration_specifiers.alignment_specifiers, &($1)); }
+		       | alignment_specifier declaration_specifiers {
+	vec_append(&($2)->declaration_specifiers.alignment_specifiers, &($1));
+	$$ = $2; }
 		       ;
 
 init_declarator_list : init_declarator { $$ = ast_list($1); }
@@ -313,10 +338,10 @@ builtin_type : VOID { $$ = AST_BUILTIN_TYPE_VOID; }
 	     | U_BOOL { $$ = AST_BUILTIN_TYPE_BOOL; }
 	     | U_COMPLEX { $$ = AST_BUILTIN_TYPE_COMPLEX; }
 	     ;
-type_specifier : builtin_type { $$ = ast_builtin_type($1); }
+type_specifier : builtin_type { ($$).n = NULL; ($$).builtin = $1; }
 	       // | atomic_type_specifier // TODO: this is not context free
-	       | struct_or_union_specifier
-	       | enum_specifier
+	       | struct_or_union_specifier { ($$).n = $1; }
+	       | enum_specifier { ($$).n = $1; }
 	       // | typedef_name { $$ = $1; } // TODO: this is not context free
 	       ;
 
@@ -366,15 +391,17 @@ struct_declaration : specifier_qualifier_list SEMI {
 		   | static_assertion_declaration { $$ = $1; }
 		   ;
 
-specifier_qualifier_list : type_specifier {
-	$$ = ast_specifier_qualifier_list();
-	vec_append(&($$)->specifier_qualifier_list.type_specifiers, &($1)); }
-			 | type_specifier specifier_qualifier_list {
-	vec_append(&($2)->specifier_qualifier_list.type_specifiers, &($1));
-	$$ = $2; }
+specifier_qualifier_list : type_qualifier {
+	$$ = ast_declaration_specifiers();
+	($$)->declaration_specifiers.type_qualifiers[($1)]++; }
+		         | type_specifier {
+	$$ = ast_type_specifier(ast_declaration_specifiers(),
+		($1).builtin, ($1).n); }
 			 | type_qualifier specifier_qualifier_list {
 	($2)->declaration_specifiers.type_qualifiers[($1)]++;
 	$$ = $2; }
+		         | type_specifier specifier_qualifier_list {
+	$$ = ast_type_specifier($2, ($1).builtin, ($1).n); }
 			 ;
 
 struct_declarator_list : struct_declarator { $$ = ast_list($1); }
@@ -447,11 +474,12 @@ function_specifier : INLINE { $$ = AST_FUNCTION_SPECIFIER_INLINE; }
 alignment_specifier : U_ALIGNAS LROUND constant_expression RROUND { $$ = ast_alloc((struct ast_node){ .kind = AST_ALIGNMENT_SPECIFIER, .alignment_specifier.expr = $3 }); }
 		    ;
 
-declarator : direct_declarator { $$ = ast_declarator(0, $1); }
-	   | pointer direct_declarator { $$ = ast_declarator($1, $2); }
+declarator : direct_declarator { $$ = $1; }
+	   | pointer direct_declarator {
+	$$ = ast_pointer_declarator($2, $1); }
 	   ;
 
-direct_declarator : identifier { $$ = $1; }
+direct_declarator : identifier { $$ = ast_declarator_begin($1); }
 		  | LROUND declarator RROUND { $$ = $2; }
 		  | direct_declarator LSQUARE opt_type_qualifier_list
 		    opt_assignment_expression
@@ -472,14 +500,35 @@ direct_declarator : identifier { $$ = $1; }
 /* direct_declarator : direct_declarator LROUND identifier_list RROUND
 		  ; */
 
-pointer : STAR { $$ = 1; }
-	| STAR type_qualifier_list { $$ = 1; }
-	| STAR pointer { $$ = $2 + 1; }
-	| STAR type_qualifier_list pointer { $$ = $3; }
+pointer : STAR {
+	$$ = ast_list(ast_alloc((struct ast_node){
+		.kind = AST_POINTER_DECLARATOR,
+	})); }
+	| STAR type_qualifier_list {
+	struct ast_node *n = ast_alloc((struct ast_node){
+		.kind = AST_POINTER_DECLARATOR,
+	});
+	memcpy(n->pointer_declarator.type_qualifiers, ($2), sizeof(($2)));
+	$$ = ast_list(n); }
+	| STAR pointer {
+	struct ast_node *n = ast_alloc((struct ast_node){
+		.kind = AST_POINTER_DECLARATOR,
+	});
+	vec_append(&($2), &n);
+	$$ = $2; }
+	| STAR type_qualifier_list pointer {
+	struct ast_node *n = ast_alloc((struct ast_node){
+		.kind = AST_POINTER_DECLARATOR,
+	});
+	memcpy(n->pointer_declarator.type_qualifiers, ($2), sizeof(($2)));
+	vec_append(&($3), &n);
+	$$ = $3; }
 	;
 
-type_qualifier_list : type_qualifier
-		    | type_qualifier_list type_qualifier
+type_qualifier_list : type_qualifier { memset($$, 0, sizeof($$)); ($$)[($1)]++; }
+		    | type_qualifier_list type_qualifier {
+	($1)[($2)]++;
+	memcpy($$, $1, sizeof($1)); }
 		    ;
 
 parameter_type_list : parameter_list { $$ = $1; }
@@ -509,10 +558,11 @@ type_name : specifier_qualifier_list opt_abstract_declarator {
 	}); }
 	  ;
 
-abstract_declarator : pointer { $$ = ast_declarator($1, NULL); }
-		    | direct_abstract_declarator { $$ = ast_declarator(0, $1); }
-		    | pointer direct_abstract_declarator
-		      { $$ = ast_declarator($1, $2); }
+abstract_declarator : pointer {
+	$$ = ast_pointer_declarator(ast_declarator_begin(NULL), $1); }
+		    | direct_abstract_declarator { $$ = $1; }
+		    | pointer direct_abstract_declarator {
+	$$ = ast_pointer_declarator($2, $1); }
 		    ;
 
 direct_abstract_declarator : LROUND abstract_declarator RROUND { $$ = $2; }

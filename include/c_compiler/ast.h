@@ -39,9 +39,8 @@ enum ast_kind {
 	AST_INIT_DECLARATOR,
 	AST_DECLARATOR,
 	AST_DECLARATION_SPECIFIERS,
-	AST_SPECIFIER_QUALIFIER_LIST,
-	AST_BUILTIN_TYPE,
 	AST_ALIGNMENT_SPECIFIER,
+	AST_POINTER_DECLARATOR,
 	AST_ARRAY_DECLARATOR,
 	AST_FUNCTION_DECLARATOR,
 	AST_PARAMETER_DECLARATION,
@@ -188,30 +187,27 @@ struct ast_node {
 			struct ast_node *declarator, *initializer;
 		} init_declarator;
 		struct {
-			int pointer;
-			struct ast_node *direct_declarator;
+			struct ast_node *ident; // can be null
+			struct vec v; /* vec<struct ast_node *> */
 		} declarator;
 		struct {
 			char storage_class_specifiers[AST_STORAGE_CLASS_SPECIFIER_N];
+			char builtin_type_specifiers[AST_BUILTIN_TYPE_N];
 			struct vec type_specifiers; /* vec<struct ast_node *> */
 			char type_qualifiers[AST_TYPE_QUALIFIER_N];
 			char function_specifiers[AST_FUNCTION_SPECIFIER_N];
 			struct vec alignment_specifiers; /* vec<struct ast_node *> */
 		} declaration_specifiers;
 		struct {
-			struct vec type_specifiers; /* vec<struct ast_node *> */
-			char type_qualifiers[AST_TYPE_QUALIFIER_N];
-		} specifier_qualifier_list;
-		enum ast_builtin_type builtin_type;
-		struct {
 			struct ast_node *expr;
 		} alignment_specifier;
 		struct {
-			struct ast_node *direct_declarator;
+			char type_qualifiers[AST_TYPE_QUALIFIER_N];
+		} pointer_declarator;
+		struct {
 			struct ast_node *size;
 		} array_declarator;
 		struct {
-			struct ast_node *direct_declarator;
 			struct vec parameter_type_list;
 		} function_declarator;
 		struct {
@@ -285,12 +281,12 @@ struct ast_node *ast_stmt_expr(struct ast_node *a);
 struct ast_node *ast_stmt_comp();
 struct ast_node *ast_call(struct ast_node *a, struct vec arg_expr_list);
 
+struct ast_node *ast_type_specifier(struct ast_node *declaration_specifiers, enum ast_builtin_type bt, struct ast_node *n);
+struct ast_node *ast_declarator_begin(struct ast_node *ident);
 struct ast_node *ast_declaration(struct ast_node *declaration_specifiers, struct vec init_declarator_list);
 struct ast_node *ast_init_declarator(struct ast_node *declarator, struct ast_node *initializer);
-struct ast_node *ast_declarator(int pointer, struct ast_node *direct_declarator);
 struct ast_node *ast_declaration_specifiers();
-struct ast_node *ast_specifier_qualifier_list();
-struct ast_node *ast_builtin_type(enum ast_builtin_type builtin_type);
+struct ast_node *ast_pointer_declarator(struct ast_node *direct_declarator, struct vec pointer);
 struct ast_node *ast_array_declarator(struct ast_node *direct_declarator, struct ast_node *size);
 struct ast_node *ast_function_declarator(struct ast_node *direct_declarator, struct vec parameter_type_list);
 struct ast_node *ast_parameter_declaration(struct ast_node *declarator, struct ast_node *declaration_specifiers);
