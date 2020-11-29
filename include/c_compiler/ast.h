@@ -139,6 +139,18 @@ enum ast_su {
 	AST_SU_UNION,
 };
 
+struct ast_declarator {
+	struct ast_node *ident; // can be null
+	struct vec v; /* vec<struct ast_node *> */
+};
+struct ast_declaration_specifiers {
+	char storage_class_specifiers[AST_STORAGE_CLASS_SPECIFIER_N];
+	char builtin_type_specifiers[AST_BUILTIN_TYPE_N];
+	struct vec type_specifiers; /* vec<struct ast_node *> */
+	char type_qualifiers[AST_TYPE_QUALIFIER_N];
+	char function_specifiers[AST_FUNCTION_SPECIFIER_N];
+	struct vec alignment_specifiers; /* vec<struct ast_node *> */
+};
 struct ast_node {
 	enum ast_kind kind;
 	union {
@@ -186,18 +198,8 @@ struct ast_node {
 		struct {
 			struct ast_node *declarator, *initializer;
 		} init_declarator;
-		struct {
-			struct ast_node *ident; // can be null
-			struct vec v; /* vec<struct ast_node *> */
-		} declarator;
-		struct {
-			char storage_class_specifiers[AST_STORAGE_CLASS_SPECIFIER_N];
-			char builtin_type_specifiers[AST_BUILTIN_TYPE_N];
-			struct vec type_specifiers; /* vec<struct ast_node *> */
-			char type_qualifiers[AST_TYPE_QUALIFIER_N];
-			char function_specifiers[AST_FUNCTION_SPECIFIER_N];
-			struct vec alignment_specifiers; /* vec<struct ast_node *> */
-		} declaration_specifiers;
+		struct ast_declarator declarator;
+		struct ast_declaration_specifiers declaration_specifiers;
 		struct {
 			struct ast_node *expr;
 		} alignment_specifier;

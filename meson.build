@@ -39,20 +39,64 @@ comp_asm = generator(c_compiler,
   capture : true
 )
 
-test_s = comp_asm.process('test/compiler_test.c')
-test_o = custom_target(
-  'test_o',
-  input : test_s,
-  output : [ '@BASENAME@.o' ],
-  command : [ nasm, '-f', 'elf64', '-o', '@OUTPUT@', '@INPUT@' ]
-)
-test_e = custom_target(
-  'test_e',
-  input : test_o,
-  output : [ '@BASENAME@' ],
-  command : [ gcc, '-static', '@INPUT@', '-o', '@OUTPUT@' ],
-  build_by_default : true
-)
+# compilation tests
+foreach item : [
+  { 'c': 'test/bf_interp.c' },
+  { 'c': 'test/pointers.c', 't': true },
+]
+  c_file = item.get('c')
+  do_test = item.get('t', false)
+  test_s = comp_asm.process(c_file)
+  test_o = custom_target(
+    c_file.underscorify() + '_o',
+    input : test_s,
+    output : [ '@BASENAME@.o' ],
+    command : [ nasm, '-f', 'elf64', '-o', '@OUTPUT@', '@INPUT@' ]
+  )
+  test_exe = executable(
+    c_file.underscorify() + '_exe',
+    test_o,
+    link_args: [ '-static' ],
+  )
+  if do_test
+    test(
+      c_file.underscorify() + '_test',
+      test_exe,
+      timeout: 2,
+    )
+  endif
+endforeach
+
+# parsing tests
+foreach c_file : [
+  'declarators.c',
+]
+  path = 'test/syntax/' + c_file
+  test(
+    path.underscorify(),
+    c_compiler,
+    args: [ 'ast', files(path) ],
+    timeout: 2,
+  )
+endforeach
+
+# compilation error tests
+foreach c_file : [
+  'inc_lvalue.c',
+  'addressof_lvalue.c',
+  'add_ptr.c',
+  'add_non_arith.c',
+  'sub_ptr.c',
+]
+  path = 'test/error/' + c_file
+  test(
+    path.underscorify(),
+    c_compiler,
+    args: [ 'asm', files(path) ],
+    timeout: 2,
+    should_fail: true
+  )
+endforeach
 
 # a bit ugly because LaTeX needs to be compiled twice, but does the job...
 prog_pdflatex = find_program('pdflatex', required: false)

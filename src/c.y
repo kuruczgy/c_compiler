@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
 	if (strcmp(argv[1], "ast") == 0) {
 		ast_fprint(stdout, n, 0);
 	} else if (strcmp(argv[1], "asm") == 0) {
-		// return cg_gen(n);
+		return cg_gen(n);
 	} else {
 		return EXIT_FAILURE;
 	}
@@ -115,7 +115,7 @@ start : translation_unit { *res = $1; } ;
 
 opt_comma : | COMMA ;
 opt_identifier : { $$ = NULL; } | identifier { $$ = $1; } ;
-opt_abstract_declarator : { $$ = NULL; } | abstract_declarator { $$ = $1; } ;
+opt_abstract_declarator : { $$ = ast_declarator_begin(NULL); } | abstract_declarator { $$ = $1; } ;
 opt_direct_astract_declarator : { $$ = NULL; } | direct_abstract_declarator { $$ = $1; };
 opt_type_qualifier_list : | type_qualifier_list ;
 opt_assignment_expression : { $$ = NULL; } | assignment_expression { $$ = $1; };
