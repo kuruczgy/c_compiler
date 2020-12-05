@@ -43,6 +43,7 @@ comp_asm = generator(c_compiler,
 foreach item : [
   { 'c': 'test/bf_interp.c' },
   { 'c': 'test/pointers.c', 't': true },
+  { 'c': 'test/scopes.c', 't': true },
 ]
   c_file = item.get('c')
   do_test = item.get('t', false)

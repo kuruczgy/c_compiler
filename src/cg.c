@@ -45,19 +45,24 @@ struct builtin_types {
 	struct type t_int, t_char, t_char_p, t_size_t;
 };
 
-struct state {
+struct decl {
+	struct type t;
+	int size;
+	int loc;
+};
+
+struct scope {
+	struct scope *parent;
 	struct hashmap vars; /* hashmap<struct decl> */
+};
+
+struct state {
+	struct scope *scope;
 	int sp; /* stack pointer */
 	FILE *f;
 	struct vec strings;
 	int label;
 	struct builtin_types builtin;
-};
-
-struct decl {
-	struct type t;
-	int size;
-	int loc;
 };
 
 typedef struct {
@@ -220,11 +225,12 @@ static void put_label(struct state *s, int l) {
 }
 
 static void state_init(struct state *s) {
-	hashmap_init(&s->vars, sizeof(struct decl));
-	s->sp = 0;
-	s->f = stdout;
-	s->strings = vec_new_empty(sizeof(const char *));
-	s->label = 0;
+	*s = (struct state) {
+		.sp = 0,
+		.f = stdout,
+		.strings = vec_new_empty(sizeof(const char *)),
+		.label = 0,
+	};
 
 	s->builtin.spec_int = ast_declaration_specifiers();
 	s->builtin.spec_int->declaration_specifiers.builtin_type_specifiers[AST_BUILTIN_TYPE_INT]++;
@@ -457,14 +463,15 @@ static status cg_gen_bin(struct state *s, const struct ast_node *n, val *res) {
 	case AST_BIN_LEQ: assert(false); break;
 	case AST_BIN_GEQ: assert(false); break;
 	case AST_BIN_EQB:
+	case AST_BIN_NEQ:
 		val_read(s, &val_a, 0);
 		val_read(s, &val_b, 1);
 		fprintf(s->f, "cmp rax, rbx\n");
-		fprintf(s->f, "sete al\n");
+		fprintf(s->f, "%s al\n",
+			n->bin.kind == AST_BIN_EQB ? "sete" : "setne");
 		fprintf(s->f, "movzx rax, al\n");
 		return val_push_new(s, s->builtin.t_int, 0, res);
 		return S_OK;
-	case AST_BIN_NEQ: assert(false); break;
 	case AST_BIN_AND: assert(false); break;
 	case AST_BIN_XOR: assert(false); break;
 	case AST_BIN_OR: assert(false); break;
@@ -480,22 +487,25 @@ static status cg_gen_bin(struct state *s, const struct ast_node *n, val *res) {
 	return S_ERROR;
 }
 
-static status find_ident(struct state *s, const char *ident, val *res) {
+static status find_ident(struct scope *scope, const char *ident, val *res) {
+	if (!scope) {
+		fprintf(stderr, "Error: undefined identifier `%s`\n", ident);
+		return S_ERROR;
+	}
 	struct decl *decl;
-	if (hashmap_get(&s->vars, ident, (void**)&decl) == MAP_OK) {
+	if (hashmap_get(&scope->vars, ident, (void**)&decl) == MAP_OK) {
 		*res = (val){ .deref_n = 0, .s = decl->loc,
 			.lvalue = true, .t = decl->t };
 		return S_OK;
 	} else {
-		fprintf(stderr, "Error: undefined identifier `%s`\n", ident);
-		return S_ERROR;
+		return find_ident(scope->parent, ident, res);
 	}
 }
 
 static status cg_gen_expr(struct state *s, const struct ast_node *n, val *res) {
 	switch (n->kind) {
 	case AST_IDENT:
-		return find_ident(s, n->ident, res);
+		return find_ident(s->scope, n->ident, res);
 	case AST_INTEGER:
 		fprintf(s->f, "mov rax, %lld\n", n->integer);
 		return val_push_new(s, s->builtin.t_int, 0, res);
@@ -601,7 +611,7 @@ static status cg_gen_declaration(struct state *s, const struct ast_node *n) {
 				.size = size,
 				.loc = loc,
 			};
-			hashmap_put(&s->vars, ident, &decl);
+			hashmap_put(&s->scope->vars, ident, &decl);
 
 			fprintf(s->f, "; alloced `%s` on stack at %d\n",
 				ident, decl.loc);
@@ -622,7 +632,7 @@ static status cg_gen_declaration(struct state *s, const struct ast_node *n) {
 				}
 				val_read(s, &val_init, 0);
 				val val_to;
-				if (find_ident(s, ident, &val_to) == S_ERROR) {
+				if (find_ident(s->scope, ident, &val_to) == S_ERROR) {
 					return S_ERROR;
 				}
 				val_store(s, &val_to, 0);
@@ -678,6 +688,13 @@ static status cg_gen_stmt(struct state *s, const struct ast_node *n) {
 }
 
 static status cg_gen_stmt_comp(struct state *s, const struct ast_node *n) {
+	struct scope block_scope = { 0 };
+	hashmap_init(&block_scope.vars, sizeof(struct decl));
+	block_scope.parent = s->scope;
+	s->scope = &block_scope;
+
+	status res = S_OK;
+
 	FOR_EACH_NODE(n->stmt_comp) {
 		status st;
 		if (ni->kind == AST_DECLARATION) {
@@ -685,9 +702,15 @@ static status cg_gen_stmt_comp(struct state *s, const struct ast_node *n) {
 		} else {
 			st = cg_gen_stmt(s, ni);
 		}
-		if (st == S_ERROR) return S_ERROR;
+		if (st == S_ERROR) {
+			res = S_ERROR;
+			goto end;
+		}
 	}
-	return S_OK;
+end:
+	hashmap_finish(&s->scope->vars);
+	s->scope = s->scope->parent;
+	return res;
 }
 
 static status cg_gen_function_definition(struct state *s,
@@ -714,6 +737,10 @@ int cg_gen(const struct ast_node *n) {
 	struct state _s;
 	struct state *s = &_s;
 	state_init(s);
+
+	struct scope file_scope = { 0 };
+	hashmap_init(&file_scope.vars, sizeof(struct decl));
+	s->scope = &file_scope;
 
 	fprintf(s->f, "global main\n");
 
