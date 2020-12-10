@@ -102,10 +102,15 @@ endforeach
 # a bit ugly because LaTeX needs to be compiled twice, but does the job...
 prog_pdflatex = find_program('pdflatex', required: false)
 if prog_pdflatex.found()
-  foreach tex : [ 'Documentation/spec.tex' ]
+  foreach tex : [ 'Documentation/spec.tex', 'Documentation/paper.tex' ]
     basename = tex.split('.')[-2].split('/')[-1]
+    tagged = vcs_tag(
+      command : [ 'git', 'rev-parse', '--short', 'HEAD' ],
+      input: tex,
+      output: basename + '.tex'
+    )
     first_pass = custom_target(basename + '_first_pass',
-      input : tex,
+      input : tagged,
       output : [ basename + '.aux' ],
       command : [
 	prog_pdflatex,
@@ -114,7 +119,7 @@ if prog_pdflatex.found()
       ],
     )
     custom_target(basename,
-      input : [ tex, first_pass ],
+      input : [ tagged, first_pass ],
       output : basename + '.pdf',
       command : [
 	prog_pdflatex,
