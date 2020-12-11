@@ -88,6 +88,7 @@ foreach c_file : [
   'add_ptr.c',
   'add_non_arith.c',
   'sub_ptr.c',
+  'deref_non_ptr.c',
 ]
   path = 'test/error/' + c_file
   test(
